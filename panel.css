@@ -1,0 +1,15 @@
+#polybatch-panel {
+  position: fixed; top: 80px; right: 16px; z-index: 999999;
+  width: 280px; background: #1b1b1f; color: #eee;
+  font: 13px/1.4 system-ui, sans-serif;
+  border: 1px solid #3a3a40; border-radius: 8px; padding: 12px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.4);
+}
+#polybatch-panel h3 { margin: 0 0 8px; font-size: 14px; }
+#polybatch-panel .pb-row { display: flex; align-items: center; gap: 6px; padding: 3px 0; }
+#polybatch-panel .pb-row label { flex: 1; }
+#polybatch-panel .pb-dir button.active { background: #4f7cff; color: #fff; }
+#polybatch-panel input[type=number] { width: 70px; background: #2a2a30; color: #eee; border: 1px solid #444; border-radius: 4px; }
+#polybatch-panel .pb-total { margin-top: 8px; border-top: 1px solid #3a3a40; padding-top: 8px; }
+#polybatch-panel .pb-submit { width: 100%; margin-top: 8px; padding: 6px; background: #4f7cff; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
+#polybatch-panel .pb-warn { color: #ffb454; }

@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "PolyBatch",
+  "version": "0.1.0",
+  "description": "一键勾选多个 Polymarket bin、统一方向与 share 数、实时算成本并加速下单。",
+  "content_scripts": [
+    {
+      "matches": ["https://polymarket.com/event/*"],
+      "js": ["cost.js", "clob.js", "content.js"],
+      "css": ["panel.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "host_permissions": [
+    "https://gamma-api.polymarket.com/*",
+    "https://clob.polymarket.com/*"
+  ]
+}
