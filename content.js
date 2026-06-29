@@ -58,7 +58,7 @@
           <button data-lang="en"${lang === 'en' ? ' class="active"' : ''}>EN</button><button data-lang="zh"${lang === 'zh' ? ' class="active"' : ''}>中</button>
         </span>
       </div>
-      <div class="pb-slug">${t('market')} · ${slug}</div>
+      <div class="pb-slug"><span class="pb-slug-label">${t('market')}</span> <span class="pb-slug-val">${slug}</span></div>
       <div class="pb-body">
         <div class="pb-seg pb-dir">
           <button data-dir="YES" class="active">YES</button><button data-dir="NO">NO</button>

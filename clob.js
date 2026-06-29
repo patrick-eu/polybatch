@@ -24,7 +24,8 @@ function parseBins(eventArr) {
   //  - 否则有完整 groupItemThreshold（有序选项类，如温度/利率档位）→ 按 threshold 升序
   //  - 都不满足 → 保持 gamma 原序
   if (ev.sortBy === 'price') {
-    bins.sort((a, b) => b.price - a.price);
+    // price 降序为主键；price 并列（如各选项概率都极低）时按 groupItemThreshold 升序打破并列
+    bins.sort((a, b) => (b.price - a.price) || (a.threshold - b.threshold) || 0);
   } else if (bins.every(b => Number.isFinite(b.threshold))) {
     bins.sort((a, b) => a.threshold - b.threshold);
   }

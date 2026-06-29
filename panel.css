@@ -35,10 +35,12 @@
 #polybatch-panel .pb-lang button { padding:3px 9px; }
 
 #polybatch-panel .pb-slug {
-  font-family:var(--pb-mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase;
-  color:var(--pb-dim); padding:7px 13px; border-bottom:1px solid var(--pb-line);
-  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  font-family:var(--pb-mono); font-size:11px; letter-spacing:.05em;
+  padding:7px 13px; border-bottom:1px solid var(--pb-line);
+  overflow-wrap:anywhere; word-break:break-word; /* 过长 slug 换行而非省略号 */
 }
+#polybatch-panel .pb-slug-label { color:var(--pb-dim); text-transform:uppercase; }
+#polybatch-panel .pb-slug-val { color:var(--pb-accent); font-weight:700; }
 
 #polybatch-panel .pb-body { padding:12px 13px; }
 #polybatch-panel .pb-dir { width:100%; margin-bottom:9px; }
@@ -100,7 +102,10 @@
 #polybatch-panel .pb-submit:hover { filter:brightness(1.1); }
 #polybatch-panel .pb-submit:active { filter:brightness(.95); }
 
-#polybatch-panel .pb-bins::-webkit-scrollbar { width:6px; }
-#polybatch-panel .pb-bins::-webkit-scrollbar-thumb { background:var(--pb-line); border-radius:3px; }
+#polybatch-panel .pb-bins { scrollbar-gutter:stable; }
+#polybatch-panel .pb-bins::-webkit-scrollbar { width:9px; }
+#polybatch-panel .pb-bins::-webkit-scrollbar-track { background:rgba(255,255,255,.03); border-radius:5px; }
+#polybatch-panel .pb-bins::-webkit-scrollbar-thumb { background:#3a4456; border-radius:5px; border:2px solid var(--pb-bg); }
+#polybatch-panel .pb-bins::-webkit-scrollbar-thumb:hover { background:var(--pb-accent); }
 
 @media (prefers-reduced-motion:reduce) { #polybatch-panel * { transition:none !important; } }

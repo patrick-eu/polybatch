@@ -31,6 +31,15 @@ const byPrice = parseBins([{ sortBy:'price', markets:[
 ]}]);
 assert.deepStrictEqual(byPrice.map(b => b.title), ['high','mid','low']);
 
+// sortBy='price' 且多数 price 并列（各选项概率都极低）→ 用 groupItemThreshold 升序打破并列
+const tie = parseBins([{ sortBy:'price', markets:[
+  { groupItemTitle:'p5', clobTokenIds:'["1","2"]', outcomePrices:'["0.001","0.999"]', groupItemThreshold:5 },
+  { groupItemTitle:'p0', clobTokenIds:'["3","4"]', outcomePrices:'["0.001","0.999"]', groupItemThreshold:0 },
+  { groupItemTitle:'hi', clobTokenIds:'["5","6"]', outcomePrices:'["0.40","0.60"]',   groupItemThreshold:9 },
+  { groupItemTitle:'p2', clobTokenIds:'["7","8"]', outcomePrices:'["0.001","0.999"]', groupItemThreshold:2 },
+]}]);
+assert.deepStrictEqual(tie.map(b => b.title), ['hi','p0','p2','p5']);
+
 // sortBy=None + 有 groupItemThreshold（有序选项类，如温度/利率）→ 按 threshold 升序
 // gamma 数组顺序与价格都故意打乱，只有 threshold 能还原网页序
 const byThr = parseBins([{ markets:[
