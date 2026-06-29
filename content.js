@@ -6,12 +6,18 @@
           loading:'Loading…', noBins:'No batchable options found', place:'Place orders',
           depth:'No depth', loadFail:'Load failed', spend:'Total spend',
           profit:'PROFITABLE', loss:'WILL LOSE', partial:'Some legs lack depth',
-          noChecked:'No options selected', cantLocate:'Couldn’t locate order area — place manually:', legs:'legs' },
+          noChecked:'No options selected', cantLocate:'Couldn’t locate order area — place manually:', legs:'legs', confirmTitle:'Confirm order', confirmBtn:'Confirm', cancelBtn:'Cancel', abortBtn:'Abort',
+          legProgress:'Leg', awaitingSign:'Sign in MetaMask…', switching:'Switching…',
+          filledMsg:'submitted', timeoutMsg:'not confirmed — continue / skip / abort',
+          contBtn:'Continue', skipBtn:'Skip', allDone:'All legs submitted' },
     zh: { market:'市场', dir:'方向', buyPerBin:'每个选项买', shares:'份额',
           loading:'加载中…', noBins:'未识别到可批量的选项', place:'下单',
           depth:'无深度', loadFail:'加载失败', spend:'总花费',
           profit:'可获利', loss:'会亏钱', partial:'部分腿深度不足',
-          noChecked:'未勾选任何选项', cantLocate:'未定位到下单区，请手动下单：', legs:'腿' },
+          noChecked:'未勾选任何选项', cantLocate:'未定位到下单区，请手动下单：', legs:'腿', confirmTitle:'确认下单', confirmBtn:'确认下单', cancelBtn:'取消', abortBtn:'中止',
+          legProgress:'第', awaitingSign:'请在 MetaMask 签名…', switching:'切换中…',
+          filledMsg:'已提交', timeoutMsg:'未确认成交 — 继续 / 跳过 / 中止',
+          contBtn:'继续', skipBtn:'跳过', allDone:'全部已提交' },
   };
   let lang = localStorage.getItem('pb_lang') || (navigator.language.startsWith('zh') ? 'zh' : 'en');
   const t = (k) => (STRINGS[lang] && STRINGS[lang][k]) || k;
@@ -222,11 +228,84 @@
       return 'timeout';
     }
 
+    let _abort = false;
+
+    function overlay(html) {
+      let el = panel.querySelector('#pb-overlay');
+      if (!el) { el = document.createElement('div'); el.id = 'pb-overlay'; panel.appendChild(el); }
+      el.innerHTML = html;
+      return el;
+    }
+    function clearOverlay() { const el = panel.querySelector('#pb-overlay'); if (el) el.remove(); }
+
+    function collectLegs() {
+      const legs = [];
+      for (const i of state.checked) {
+        const cell = panel.querySelector(`.pb-leg-cost[data-i="${i}"]`);
+        const cost = cell ? Number(String(cell.textContent).replace(/[^0-9.]/g, '')) * state.shares : 0;
+        legs.push({ bin: state.bins[i], title: state.bins[i].title, dir: state.dir, shares: state.shares, cost });
+      }
+      return legs;
+    }
+
     async function onSubmit() {
       if (!state.checked.size) { alert(t('noChecked')); return; }
-      for (const i of state.checked) {
-        await submitLeg({ bin: state.bins[i], dir: state.dir, shares: state.shares });
+      const legs = collectLegs();
+      const plan = buildOrderPlan(legs);
+      // 确认步
+      overlay(
+        `<div class="pb-ov-title">${t('confirmTitle')}</div>
+         <div class="pb-ov-sum">${plan.count} ${t('legs')} · ${state.dir} · $${plan.totalSpend.toFixed(2)}</div>
+         <div class="pb-ov-list">${plan.items.map(it => `<div>${it.title} · ${it.shares}</div>`).join('')}</div>
+         <div class="pb-ov-actions">
+           <button id="pb-confirm" class="pb-submit">${t('confirmBtn')}</button>
+           <button id="pb-cancel" class="pb-ghost">${t('cancelBtn')}</button>
+         </div>`);
+      panel.querySelector('#pb-cancel').onclick = clearOverlay;
+      panel.querySelector('#pb-confirm').onclick = () => submitBatch(legs);
+    }
+
+    async function submitBatch(legs) {
+      _abort = false;
+      for (let i = 0; i < legs.length; i++) {
+        if (_abort) break;
+        const n = legs.length;
+        const showAbort = `<button id="pb-abort" class="pb-ghost">${t('abortBtn')}</button>`;
+        overlay(`<div class="pb-ov-prog">${t('legProgress')} ${i + 1}/${n} · ${t('switching')}</div>${showAbort}`);
+        panel.querySelector('#pb-abort').onclick = () => { _abort = true; };
+        try {
+          await submitLeg(legs[i]);
+        } catch (e) {
+          overlay(`<div class="pb-ov-prog pb-warn">${t('legProgress')} ${i + 1}/${n} · ${String(e.message)}</div>
+                   <button id="pb-skip" class="pb-ghost">${t('skipBtn')}</button>
+                   <button id="pb-abort" class="pb-ghost">${t('abortBtn')}</button>`);
+          const act = await new Promise(res => {
+            panel.querySelector('#pb-skip').onclick = () => res('skip');
+            panel.querySelector('#pb-abort').onclick = () => res('abort');
+          });
+          if (act === 'abort') break; else continue;
+        }
+        overlay(`<div class="pb-ov-prog">${t('legProgress')} ${i + 1}/${n} · ${t('awaitingSign')}</div>${showAbort}`);
+        panel.querySelector('#pb-abort').onclick = () => { _abort = true; };
+        const r = await waitForFill(ORDER_TIMEOUT);
+        if (r === 'timeout') {
+          overlay(`<div class="pb-ov-prog pb-warn">${t('legProgress')} ${i + 1}/${n} · ${t('timeoutMsg')}</div>
+                   <button id="pb-cont" class="pb-ghost">${t('contBtn')}</button>
+                   <button id="pb-skip" class="pb-ghost">${t('skipBtn')}</button>
+                   <button id="pb-abort" class="pb-ghost">${t('abortBtn')}</button>`);
+          const act = await new Promise(res => {
+            panel.querySelector('#pb-cont').onclick = () => res('cont');
+            panel.querySelector('#pb-skip').onclick = () => res('skip');
+            panel.querySelector('#pb-abort').onclick = () => res('abort');
+          });
+          if (act === 'abort') break;
+          if (act === 'cont') { i--; continue; } // 再等这一笔
+          // skip → 继续下一笔
+        }
       }
+      overlay(`<div class="pb-ov-prog">${t('allDone')}</div>
+               <button id="pb-close" class="pb-ghost">OK</button>`);
+      panel.querySelector('#pb-close').onclick = clearOverlay;
     }
 
     return { slug, destroy: () => panel.remove() };
