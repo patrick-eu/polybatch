@@ -89,4 +89,15 @@ assert.strictEqual(eventSlugFromPath('/zh-hant/event/brazil-presidential-electio
 assert.strictEqual(eventSlugFromPath('/zh/politics'), null);   // 分类页非 event 页 → 不挂面板
 assert.strictEqual(eventSlugFromPath('/'), null);
 
+// 用户实测的真实非英文 event 页：event 后有 eventSlug + marketSlug 两段，必须取 eventSlug（第一段）
+assert.strictEqual(
+  eventSlugFromPath('/zh-hant/event/highest-temperature-in-guangzhou-on-june-29-2026/highest-temperature-in-guangzhou-on-june-29-2026-34c'),
+  'highest-temperature-in-guangzhou-on-june-29-2026');
+assert.strictEqual(
+  eventSlugFromPath('/vi/event/highest-temperature-in-guangzhou-on-june-29-2026/highest-temperature-in-guangzhou-on-june-29-2026-34c'),
+  'highest-temperature-in-guangzhou-on-june-29-2026');
+assert.strictEqual(
+  eventSlugFromPath('/de/event/highest-temperature-in-guangzhou-on-june-29-2026/highest-temperature-in-guangzhou-on-june-29-2026-34c'),
+  'highest-temperature-in-guangzhou-on-june-29-2026');
+
 console.log('clob.test.js PASS');
