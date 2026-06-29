@@ -1,6 +1,6 @@
 // cost.test.js
 const assert = require('assert');
-const { calcLegCost, summarize } = require('./cost.js');
+const { calcLegCost, summarize, bestAskCents } = require('./cost.js');
 
 // asks 故意降序输入（模拟真实 API），价 0.30/100 + 0.28/50
 const book = { asks: [{price:'0.30', size:'100'}, {price:'0.28', size:'50'}], bids: [] };
@@ -30,5 +30,12 @@ assert.strictEqual(s.profitable, true);
 const s2 = summarize([0.5, 0.6], 100);
 assert.ok(Math.abs(s2.combined - 1.1) < 1e-9, `combined2=${s2.combined}`);
 assert.strictEqual(s2.profitable, false);
+
+// bestAskCents：卖一价（asks 最低价）→ 美分，保留 0.1¢
+assert.strictEqual(bestAskCents({ asks:[{price:'0.999',size:'10'}] }), 99.9);
+assert.strictEqual(bestAskCents({ asks:[{price:'0.50'},{price:'0.48'},{price:'0.52'}] }), 48); // 取最低
+assert.strictEqual(bestAskCents({ asks:[{price:'0.02',size:'5'}] }), 2);
+assert.strictEqual(bestAskCents({ asks:[] }), null);
+assert.strictEqual(bestAskCents(null), null);
 
 console.log('cost.test.js PASS');

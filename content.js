@@ -16,13 +16,6 @@
   let lang = localStorage.getItem('pb_lang') || (navigator.language.startsWith('zh') ? 'zh' : 'en');
   const t = (k) => (STRINGS[lang] && STRINGS[lang][k]) || k;
 
-  // 易变的页面选择器集中此处；值需在真实 event 页用 DevTools 确认后填入
-  const PB_SELECTORS = {
-    binCard: '[data-bin-card]',
-    dirToggle: '[data-outcome]',
-    shareInput: 'input[inputmode="decimal"]',
-  };
-
   let active = null; // 当前已挂载面板 { slug, destroy }
 
   function getEventSlug() {
@@ -165,28 +158,68 @@
         ${ok ? '' : `<div class="pb-partial">${t('partial')}</div>`}`;
     }
 
+    // 选择器从用户提供的真实下单区 + bin 行 HTML 提取（2026-06-29）
+    const PB_SELECTORS = {
+      binRow: 'a[data-id]',                              // bin 行（左侧温度选项，是 <a> 链接）
+      binTitle: 'p.font-semibold.truncate',              // 行内标题（取文本匹配 bin.title）
+      rowYes: 'button[class*="text-green-500"]',         // 行内 Buy Yes（绿）→ 选 bin+YES
+      rowNo: 'button[class*="text-red-500"]',            // 行内 Buy No（红）→ 选 bin+NO
+      limitPriceInput: 'input[inputmode="decimal"][placeholder="0.0¢"]', // 限价输入（美分）
+      sharesInput: 'input[inputmode="decimal"][placeholder="0"]',        // 份额输入
+      placeOrderBtn: '.trading-button[data-color="blue"]',               // Place buy order
+    };
+    const ORDER_TIMEOUT = 60000;
+
+    function setNativeValue(input, value) {
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+      setter.call(input, String(value));
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
     async function submitLeg(leg) {
-      const card = locateBinCard(leg.bin.title);
-      if (!card) { alert(`${t('cantLocate')} ${leg.bin.title}`); return; }
-      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // 1. 定位 bin 行（标题精确匹配），点行内方向按钮 → 右侧组件加载该 bin + 方向
+      //    不点整行 <a>（会导航走）；方向靠按钮颜色（绿=Yes/红=No），文本不可靠
+      const row = [...document.querySelectorAll(PB_SELECTORS.binRow)]
+        .find(r => { const e = r.querySelector(PB_SELECTORS.binTitle); return e && e.textContent.trim() === leg.bin.title; });
+      if (!row) throw new Error('bin');
+      row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const dirBtn = row.querySelector(leg.dir === 'YES' ? PB_SELECTORS.rowYes : PB_SELECTORS.rowNo);
+      if (!dirBtn) throw new Error('dir');
+      dirBtn.click();
+      await sleep(500); // 等右侧组件加载该 bin
 
-      const dirBtn = [...card.querySelectorAll(PB_SELECTORS.dirToggle)]
-        .find(el => el.textContent.trim().toUpperCase().startsWith(leg.dir));
-      if (dirBtn) dirBtn.click();
+      // 2. 卖一价（美分）→ Limit price
+      const book = await bookFor(leg.bin);
+      const cents = bestAskCents(book);
+      if (cents == null) throw new Error('ask');
+      const priceInput = document.querySelector(PB_SELECTORS.limitPriceInput);
+      if (!priceInput) throw new Error('price'); // 若组件落在 Market 模式会没此框
+      setNativeValue(priceInput, cents);
+      await sleep(150);
 
-      const input = card.querySelector(PB_SELECTORS.shareInput);
-      if (input) {
-        const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-        setter.call(input, String(leg.shares));            // 绕过 React 受控组件
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-      }
-      card.style.outline = '2px solid #5B8CFF';            // 高亮，提示用户点 Buy + 签名
+      // 3. 份额
+      const sharesEl = document.querySelector(PB_SELECTORS.sharesInput);
+      if (!sharesEl) throw new Error('shares');
+      setNativeValue(sharesEl, leg.shares);
+      await sleep(150);
+
+      // 4. 点 Place buy order → 弹 MetaMask（用户签名）
+      const btn = document.querySelector(PB_SELECTORS.placeOrderBtn);
+      if (!btn) throw new Error('place');
+      btn.click();
     }
 
-    // ponytail: 子串匹配；若某 bin 标题是另一个的子串，需在真实 DOM 上改用精确的标题元素选择器（连同 PB_SELECTORS 一并确认）
-    function locateBinCard(title) {
-      const cards = document.querySelectorAll(PB_SELECTORS.binCard);
-      return [...cards].find(c => c.textContent.includes(title)) || null;
+    // 提交成功后 Polymarket 重置份额输入；检测到清空即视为该笔已提交
+    // ponytail: 用表单重置作信号，比依赖一闪而过的 toast 选择器稳；真实页面验证若不准再换信号
+    async function waitForFill(timeoutMs) {
+      const start = Date.now();
+      while (Date.now() - start < timeoutMs) {
+        const el = document.querySelector(PB_SELECTORS.sharesInput);
+        if (!el || el.value === '' || el.value === '0') return 'filled';
+        await sleep(500);
+      }
+      return 'timeout';
     }
 
     async function onSubmit() {
