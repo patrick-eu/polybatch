@@ -26,10 +26,8 @@
   let active = null; // 当前已挂载面板 { slug, destroy }
 
   function getEventSlug() {
-    // 兼容非英文界面的语言前缀（如 /es/event/<slug>）：找 'event' 段后的 slug，而非固定第 2 段
-    const p = location.pathname.split('/').filter(Boolean);
-    const i = p.indexOf('event');
-    return (i !== -1 && p[i + 1]) ? p[i + 1] : null;
+    // 解析逻辑在 clob.js 的 eventSlugFromPath（纯函数、有测试覆盖），兼容非英文语言前缀
+    return eventSlugFromPath(location.pathname);
   }
 
   function onRouteChange() {
