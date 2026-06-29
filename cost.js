@@ -19,4 +19,11 @@ function calcLegCost(book, shares) {
   };
 }
 
-if (typeof module !== 'undefined') module.exports = { calcLegCost };
+// 综合成本：选中各腿均价之和 = 买“一套”(每腿各 1 share)的价。
+// >1 必亏(无论哪个结果命中，赔付仅 $1 < 成本)；<1 命中则可获利。
+function summarize(avgPrices, shares) {
+  const combined = avgPrices.reduce((s, p) => s + p, 0);
+  return { combined, totalSpend: combined * shares, profitable: combined < 1 };
+}
+
+if (typeof module !== 'undefined') module.exports = { calcLegCost, summarize };

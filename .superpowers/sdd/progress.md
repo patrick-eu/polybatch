@@ -1,0 +1,6 @@
+Task 1: complete (commit 4ab6753, cost.js + test, node PASS, review clean)
+Task 2: complete (commit bafc693, clob.js + test, node PASS, review clean)
+Task 3: complete (commit fac86fc, manifest+css+content skeleton, syntax OK)
+Task 4: complete (commit 7e58345, content.js orchestration, syntax OK)
+Task 5: complete (commit e8d8f65, submitLeg DOM prefill framework, syntax OK)
+Task fix: complete (commit bc6edce, 5 review fixes + test, all PASS)
