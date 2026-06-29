@@ -10,7 +10,8 @@
           legProgress:'Leg', awaitingSign:'Sign in MetaMask…', switching:'Switching…',
           filledMsg:'submitted', timeoutMsg:'not confirmed — continue / skip / abort',
           contBtn:'Continue', skipBtn:'Skip', allDone:'All legs submitted',
-          aborted:'aborted', limitNote:'Limit @ best ask — size beyond the top ask may not fill' },
+          aborted:'aborted', limitNote:'Limit @ best ask — size beyond the top ask may not fill',
+          placing:'Placing…', placedAll:'orders placed — sign each in MetaMask' },
     zh: { market:'市场', dir:'方向', buyPerBin:'每个选项买', shares:'份额',
           loading:'加载中…', noBins:'未识别到可批量的选项', place:'下单',
           depth:'无深度', loadFail:'加载失败', spend:'总花费',
@@ -19,7 +20,8 @@
           legProgress:'第', awaitingSign:'请在 MetaMask 签名…', switching:'切换中…',
           filledMsg:'已提交', timeoutMsg:'未确认成交 — 继续 / 跳过 / 中止',
           contBtn:'继续', skipBtn:'跳过', allDone:'全部已提交',
-          aborted:'已中止', limitNote:'限价挂卖一价，超出卖一档的份额可能不会成交' },
+          aborted:'已中止', limitNote:'限价挂卖一价，超出卖一档的份额可能不会成交',
+          placing:'挂单中…', placedAll:'笔已挂出，请在 MetaMask 依次签名' },
   };
   let lang = localStorage.getItem('pb_lang') || (navigator.language.startsWith('zh') ? 'zh' : 'en');
   const t = (k) => (STRINGS[lang] && STRINGS[lang][k]) || k;
@@ -177,6 +179,7 @@
       placeOrderBtn: '.trading-button[data-color="blue"]',               // Place buy order
     };
     const ORDER_TIMEOUT = 60000;
+    const SUBMIT_GAP = 1500; // 实验版：连续挂单时笔间间隔（ms），给 MetaMask 接收上一笔签名请求的时间；可调
 
     function setNativeValue(input, value) {
       const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
@@ -276,17 +279,21 @@
       panel.querySelector('#pb-confirm').onclick = () => { _running = true; submitBatch(legs).finally(() => { _running = false; }); };
     }
 
+    // 实验版（按用户思路）：连续挂单，不逐笔等待。挂完一笔（发起 MetaMask 签名）即留短间隔挂下一笔。
+    // 前提（必须真实页面验证）：点 place buy order 后该笔订单已锁定、交给 MetaMask 签名队列，
+    // 切换右侧组件到下一个 bin 不会冲掉它。若验证不成立，回退到 waitForFill 逐笔等待版。
     async function submitBatch(legs) {
       _abort = false;
-      let submitted = 0, skipped = 0;
+      let placed = 0, skipped = 0;
       for (let i = 0; i < legs.length; i++) {
         if (_abort) break;
         const n = legs.length;
         const showAbort = `<button id="pb-abort" class="pb-ghost">${t('abortBtn')}</button>`;
-        overlay(`<div class="pb-ov-prog">${t('legProgress')} ${i + 1}/${n} · ${t('switching')}</div>${showAbort}`);
+        overlay(`<div class="pb-ov-prog">${t('legProgress')} ${i + 1}/${n} · ${t('placing')}</div>${showAbort}`);
         panel.querySelector('#pb-abort').onclick = () => { _abort = true; };
         try {
-          await submitLeg(legs[i]);
+          await submitLeg(legs[i]); // 点 bin→填价填量→place buy order，发起 MetaMask 签名
+          placed++;
         } catch (e) {
           overlay(`<div class="pb-ov-prog pb-warn">${t('legProgress')} ${i + 1}/${n} · ${String(e.message)}</div>
                    <button id="pb-skip" class="pb-ghost">${t('skipBtn')}</button>
@@ -298,32 +305,10 @@
           if (act === 'abort') { _abort = true; break; }
           skipped++; continue;
         }
-        // 等待该笔提交；超时只重新等待、绝不重跑 submitLeg（防重复下单）
-        overlay(`<div class="pb-ov-prog">${t('legProgress')} ${i + 1}/${n} · ${t('awaitingSign')}</div>${showAbort}`);
-        panel.querySelector('#pb-abort').onclick = () => { _abort = true; };
-        let r = await waitForFill(ORDER_TIMEOUT);
-        while (r === 'timeout') {
-          overlay(`<div class="pb-ov-prog pb-warn">${t('legProgress')} ${i + 1}/${n} · ${t('timeoutMsg')}</div>
-                   <button id="pb-cont" class="pb-ghost">${t('contBtn')}</button>
-                   <button id="pb-skip" class="pb-ghost">${t('skipBtn')}</button>
-                   <button id="pb-abort" class="pb-ghost">${t('abortBtn')}</button>`);
-          const act = await new Promise(res => {
-            panel.querySelector('#pb-cont').onclick = () => res('cont');
-            panel.querySelector('#pb-skip').onclick = () => res('skip');
-            panel.querySelector('#pb-abort').onclick = () => res('abort');
-          });
-          if (act === 'abort') { _abort = true; break; }
-          if (act === 'skip') { r = 'skip'; break; }
-          // cont：仅重新等待，不再 submitLeg
-          overlay(`<div class="pb-ov-prog">${t('legProgress')} ${i + 1}/${n} · ${t('awaitingSign')}</div>${showAbort}`);
-          panel.querySelector('#pb-abort').onclick = () => { _abort = true; };
-          r = await waitForFill(ORDER_TIMEOUT);
-        }
-        if (_abort) break;
-        if (r === 'filled') submitted++;
-        else if (r === 'skip') skipped++;
+        // 不等成交/签名，仅留间隔让签名请求发出后再挂下一笔；中止在间隔后的循环顶部生效
+        if (i < legs.length - 1) await sleep(SUBMIT_GAP);
       }
-      const tail = `${submitted} ${t('filledMsg')}${skipped ? ' · ' + skipped + ' ' + t('skipBtn') : ''}${_abort ? ' · ' + t('aborted') : ''}`;
+      const tail = `${placed} ${t('placedAll')}${skipped ? ' · ' + skipped + ' ' + t('skipBtn') : ''}${_abort ? ' · ' + t('aborted') : ''}`;
       overlay(`<div class="pb-ov-prog">${tail}</div>
                <button id="pb-close" class="pb-ghost">OK</button>`);
       panel.querySelector('#pb-close').onclick = clearOverlay;
