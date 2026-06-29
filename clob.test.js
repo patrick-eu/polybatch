@@ -13,7 +13,7 @@ const eventArr = [{
 
 const bins = parseBins(eventArr);
 assert.strictEqual(bins.length, 2);
-assert.deepStrictEqual(bins[0], { title:'70-72°F', yesToken:'111', noToken:'222' });
+assert.deepStrictEqual(bins[0], { title:'70-72°F', yesToken:'111', noToken:'222', price:0 });
 assert.strictEqual(bins[1].yesToken, '333');
 
 // 无 markets → []
@@ -27,5 +27,20 @@ const mixed = parseBins([{ markets: [
 ]}]);
 assert.strictEqual(mixed.length, 1);
 assert.strictEqual(mixed[0].title, 'good');
+
+// sortBy='price' 时按 yes 价(概率)降序还原网页顺序
+const sorted = parseBins([{ sortBy:'price', markets:[
+  { groupItemTitle:'low',  clobTokenIds:'["1","2"]', outcomePrices:'["0.10","0.90"]' },
+  { groupItemTitle:'high', clobTokenIds:'["3","4"]', outcomePrices:'["0.40","0.60"]' },
+  { groupItemTitle:'mid',  clobTokenIds:'["5","6"]', outcomePrices:'["0.25","0.75"]' },
+]}]);
+assert.deepStrictEqual(sorted.map(b => b.title), ['high','mid','low']);
+
+// 无 sortBy（如天气区间）→ 保持 gamma 原始顺序，不破坏既有顺序
+const kept = parseBins([{ markets:[
+  { groupItemTitle:'a', clobTokenIds:'["1","2"]', outcomePrices:'["0.10","0.90"]' },
+  { groupItemTitle:'b', clobTokenIds:'["3","4"]', outcomePrices:'["0.40","0.60"]' },
+]}]);
+assert.deepStrictEqual(kept.map(b => b.title), ['a','b']);
 
 console.log('clob.test.js PASS');

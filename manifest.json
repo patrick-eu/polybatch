@@ -2,7 +2,6 @@
   "manifest_version": 3,
   "name": "PolyBatch",
   "version": "0.1.0",
-  "default_locale": "en",
   "description": "One-click batch buy across multiple Polymarket bins: pick bins, set direction and share size, see combined cost live.",
   "content_scripts": [
     {

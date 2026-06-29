@@ -5,12 +5,18 @@ const CLOB = 'https://clob.polymarket.com';
 function parseBins(eventArr) {
   const ev = eventArr && eventArr[0];
   if (!ev || !ev.markets) return [];
-  return ev.markets.flatMap(m => {
+  const bins = ev.markets.flatMap(m => {
     try {
       const tokens = JSON.parse(m.clobTokenIds);
-      return [{ title: m.groupItemTitle || m.question, yesToken: tokens[0], noToken: tokens[1] }];
+      let price = 0;
+      try { price = Number(JSON.parse(m.outcomePrices)[0]) || 0; } catch {}
+      return [{ title: m.groupItemTitle || m.question, yesToken: tokens[0], noToken: tokens[1], price }];
     } catch { return []; }
   });
+  // 还原网页显示顺序：网页按 event.sortBy 排序。sortBy='price' 时按 yes 价(概率)降序；
+  // 其他情况保持 gamma 原始顺序（如天气区间序），不破坏既有正确顺序。
+  if (ev.sortBy === 'price') bins.sort((a, b) => b.price - a.price);
+  return bins;
 }
 
 async function fetchEventBins(slug) {
