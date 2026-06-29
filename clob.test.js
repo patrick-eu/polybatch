@@ -48,6 +48,14 @@ const ask = parseBins([{ sortBy:'price', markets:[
 ]}]);
 assert.deepStrictEqual(ask.map(b => b.title), ['b','a']);
 
+// bestAsk 为 null（无卖单的冷门候选）→ 回退 outcomePrices，不能当成 0 排最后
+// 若 Number(null)=0 被误用，high(op0.30) 会被排到 mid(op0.05) 之后；正确应回退后 high 在前
+const askNull = parseBins([{ sortBy:'price', markets:[
+  { groupItemTitle:'mid',  clobTokenIds:'["1","2"]', bestAsk:0.10, outcomePrices:'["0.10","0.90"]', groupItemThreshold:0 },
+  { groupItemTitle:'high', clobTokenIds:'["3","4"]', bestAsk:null, outcomePrices:'["0.30","0.70"]', groupItemThreshold:1 },
+]}]);
+assert.deepStrictEqual(askNull.map(b => b.title), ['high','mid']);
+
 // sortBy=None + 有 groupItemThreshold（有序选项类，如温度/利率）→ 按 threshold 升序
 // gamma 数组顺序与价格都故意打乱，只有 threshold 能还原网页序
 const byThr = parseBins([{ markets:[

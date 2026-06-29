@@ -10,9 +10,10 @@ function parseBins(eventArr) {
     if (m.acceptingOrders === false || m.closed === true || m.active === false) return [];
     try {
       const tokens = JSON.parse(m.clobTokenIds);
-      // 排序用价：优先 bestAsk（网页显示的买入价/概率），流动性差时它 ≠ outcomePrices；缺失再回退
+      // 排序用价：优先 bestAsk（网页显示的买入价/概率）；为 0 / null / 缺失（无卖单）时回退 outcomePrices
+      // 注意 Number(null)===0，必须用 >0 判断而非 isFinite，否则无卖单的冷门候选会被当成 0 排到最后
       let price = Number(m.bestAsk);
-      if (!Number.isFinite(price)) {
+      if (!(price > 0)) {
         try { price = Number(JSON.parse(m.outcomePrices)[0]) || 0; } catch { price = 0; }
       }
       return [{
