@@ -162,3 +162,12 @@
 #polybatch-panel .pb-bins::-webkit-scrollbar-thumb:hover { background: var(--pb-accent-bright); background-clip: padding-box; }
 
 @media (prefers-reduced-motion: reduce) { #polybatch-panel, #polybatch-panel * { animation: none !important; transition: none !important; } }
+
+#polybatch-panel #pb-overlay { position:absolute; inset:0; z-index:6; background:rgba(13,16,22,.92); backdrop-filter:blur(8px); border-radius:inherit; padding:16px; display:flex; flex-direction:column; gap:10px; justify-content:center; }
+#polybatch-panel .pb-ov-title { font-weight:700; font-size:14px; }
+#polybatch-panel .pb-ov-sum { font-family:var(--pb-mono); color:var(--pb-accent-bright); }
+#polybatch-panel .pb-ov-list { font-family:var(--pb-mono); font-size:11px; color:var(--pb-dim); max-height:90px; overflow:auto; }
+#polybatch-panel .pb-ov-prog { font-family:var(--pb-mono); font-size:13px; }
+#polybatch-panel .pb-ov-actions { display:flex; gap:8px; }
+#polybatch-panel .pb-ghost { flex:1; padding:8px; border:1px solid var(--pb-line); border-radius:8px; background:var(--pb-surface); color:var(--pb-text); font-family:var(--pb-sans); font-size:12px; cursor:pointer; }
+#polybatch-panel .pb-ghost:hover { background:var(--pb-surface-2); }
