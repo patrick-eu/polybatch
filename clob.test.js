@@ -40,6 +40,14 @@ const tie = parseBins([{ sortBy:'price', markets:[
 ]}]);
 assert.deepStrictEqual(tie.map(b => b.title), ['hi','p0','p2','p5']);
 
+// 排序用 bestAsk 优先（网页显示价），流动性差时 bestAsk ≠ outcomePrices
+// 若误用 outcomePrices 会得 ['a','b']（0.0015>0.001），用 bestAsk 应得 ['b','a']（0.003>0.001）
+const ask = parseBins([{ sortBy:'price', markets:[
+  { groupItemTitle:'a', clobTokenIds:'["1","2"]', bestAsk:0.001, outcomePrices:'["0.0015","0.9985"]', groupItemThreshold:0 },
+  { groupItemTitle:'b', clobTokenIds:'["3","4"]', bestAsk:0.003, outcomePrices:'["0.001","0.999"]',   groupItemThreshold:1 },
+]}]);
+assert.deepStrictEqual(ask.map(b => b.title), ['b','a']);
+
 // sortBy=None + 有 groupItemThreshold（有序选项类，如温度/利率）→ 按 threshold 升序
 // gamma 数组顺序与价格都故意打乱，只有 threshold 能还原网页序
 const byThr = parseBins([{ markets:[

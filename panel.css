@@ -102,10 +102,12 @@
 #polybatch-panel .pb-submit:hover { filter:brightness(1.1); }
 #polybatch-panel .pb-submit:active { filter:brightness(.95); }
 
-#polybatch-panel .pb-bins { scrollbar-gutter:stable; }
-#polybatch-panel .pb-bins::-webkit-scrollbar { width:9px; }
-#polybatch-panel .pb-bins::-webkit-scrollbar-track { background:rgba(255,255,255,.03); border-radius:5px; }
-#polybatch-panel .pb-bins::-webkit-scrollbar-thumb { background:#3a4456; border-radius:5px; border:2px solid var(--pb-bg); }
-#polybatch-panel .pb-bins::-webkit-scrollbar-thumb:hover { background:var(--pb-accent); }
+#polybatch-panel .pb-bins {
+  scrollbar-gutter:stable; scrollbar-width:thin;
+  scrollbar-color:var(--pb-accent) rgba(255,255,255,.08); /* 标准属性兜底（Firefox/新Chrome） */
+}
+#polybatch-panel .pb-bins::-webkit-scrollbar { width:10px; }
+#polybatch-panel .pb-bins::-webkit-scrollbar-track { background:rgba(255,255,255,.06); border-radius:5px; }
+#polybatch-panel .pb-bins::-webkit-scrollbar-thumb { background:var(--pb-accent); border-radius:5px; min-height:32px; }
 
 @media (prefers-reduced-motion:reduce) { #polybatch-panel * { transition:none !important; } }

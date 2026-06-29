@@ -10,8 +10,11 @@ function parseBins(eventArr) {
     if (m.acceptingOrders === false || m.closed === true || m.active === false) return [];
     try {
       const tokens = JSON.parse(m.clobTokenIds);
-      let price = 0;
-      try { price = Number(JSON.parse(m.outcomePrices)[0]) || 0; } catch {}
+      // 排序用价：优先 bestAsk（网页显示的买入价/概率），流动性差时它 ≠ outcomePrices；缺失再回退
+      let price = Number(m.bestAsk);
+      if (!Number.isFinite(price)) {
+        try { price = Number(JSON.parse(m.outcomePrices)[0]) || 0; } catch { price = 0; }
+      }
       return [{
         title: m.groupItemTitle || m.question,
         yesToken: tokens[0], noToken: tokens[1],
