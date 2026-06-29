@@ -12,12 +12,22 @@ function parseBins(eventArr) {
       const tokens = JSON.parse(m.clobTokenIds);
       let price = 0;
       try { price = Number(JSON.parse(m.outcomePrices)[0]) || 0; } catch {}
-      return [{ title: m.groupItemTitle || m.question, yesToken: tokens[0], noToken: tokens[1], price }];
+      return [{
+        title: m.groupItemTitle || m.question,
+        yesToken: tokens[0], noToken: tokens[1],
+        price, threshold: Number(m.groupItemThreshold),
+      }];
     } catch { return []; }
   });
-  // 还原网页显示顺序：网页按 event.sortBy 排序。sortBy='price' 时按 yes 价(概率)降序；
-  // 其他情况保持 gamma 原始顺序（如天气区间序），不破坏既有正确顺序。
-  if (ev.sortBy === 'price') bins.sort((a, b) => b.price - a.price);
+  // 还原网页显示顺序（通用，不针对单一市场）：
+  //  - sortBy='price'（概率竞争类，如候选人/球队）→ 按概率降序
+  //  - 否则有完整 groupItemThreshold（有序选项类，如温度/利率档位）→ 按 threshold 升序
+  //  - 都不满足 → 保持 gamma 原序
+  if (ev.sortBy === 'price') {
+    bins.sort((a, b) => b.price - a.price);
+  } else if (bins.every(b => Number.isFinite(b.threshold))) {
+    bins.sort((a, b) => a.threshold - b.threshold);
+  }
   return bins;
 }
 

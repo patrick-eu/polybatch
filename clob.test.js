@@ -2,44 +2,49 @@
 const assert = require('assert');
 const { parseBins } = require('./clob.js');
 
-const eventArr = [{
-  markets: [
-    { groupItemTitle: '70-72°F', question: 'Will temp be 70-72?',
-      clobTokenIds: '["111","222"]', outcomes: '["Yes","No"]' },
-    { groupItemTitle: '72-74°F', question: 'Will temp be 72-74?',
-      clobTokenIds: '["333","444"]', outcomes: '["Yes","No"]' },
-  ],
-}];
-
-const bins = parseBins(eventArr);
-assert.strictEqual(bins.length, 2);
-assert.deepStrictEqual(bins[0], { title:'70-72°F', yesToken:'111', noToken:'222', price:0 });
-assert.strictEqual(bins[1].yesToken, '333');
+// 基本解析：title / token 提取
+const basic = parseBins([{ markets: [
+  { groupItemTitle:'A', clobTokenIds:'["111","222"]' },
+  { groupItemTitle:'B', clobTokenIds:'["333","444"]' },
+]}]);
+assert.strictEqual(basic.length, 2);
+assert.strictEqual(basic[0].title, 'A');
+assert.strictEqual(basic[0].yesToken, '111');
+assert.strictEqual(basic[0].noToken, '222');
 
 // 无 markets → []
 assert.deepStrictEqual(parseBins([{}]), []);
 assert.deepStrictEqual(parseBins([]), []);
 
-// 单个 market 的 clobTokenIds 非法时只跳过它，保留正常的
+// 单个 clobTokenIds 非法 → 跳过它，保留正常的
 const mixed = parseBins([{ markets: [
   { groupItemTitle:'good', clobTokenIds:'["1","2"]' },
-  { groupItemTitle:'bad', clobTokenIds:'INVALID' },
+  { groupItemTitle:'bad',  clobTokenIds:'INVALID' },
 ]}]);
-assert.strictEqual(mixed.length, 1);
-assert.strictEqual(mixed[0].title, 'good');
+assert.deepStrictEqual(mixed.map(b => b.title), ['good']);
 
-// sortBy='price' 时按 yes 价(概率)降序还原网页顺序
-const sorted = parseBins([{ sortBy:'price', markets:[
-  { groupItemTitle:'low',  clobTokenIds:'["1","2"]', outcomePrices:'["0.10","0.90"]' },
-  { groupItemTitle:'high', clobTokenIds:'["3","4"]', outcomePrices:'["0.40","0.60"]' },
-  { groupItemTitle:'mid',  clobTokenIds:'["5","6"]', outcomePrices:'["0.25","0.75"]' },
+// sortBy='price'（概率竞争类）→ 按 yes 价(概率)降序
+const byPrice = parseBins([{ sortBy:'price', markets:[
+  { groupItemTitle:'low',  clobTokenIds:'["1","2"]', outcomePrices:'["0.10","0.90"]', groupItemThreshold:0 },
+  { groupItemTitle:'high', clobTokenIds:'["3","4"]', outcomePrices:'["0.40","0.60"]', groupItemThreshold:1 },
+  { groupItemTitle:'mid',  clobTokenIds:'["5","6"]', outcomePrices:'["0.25","0.75"]', groupItemThreshold:2 },
 ]}]);
-assert.deepStrictEqual(sorted.map(b => b.title), ['high','mid','low']);
+assert.deepStrictEqual(byPrice.map(b => b.title), ['high','mid','low']);
 
-// 无 sortBy（如天气区间）→ 保持 gamma 原始顺序，不破坏既有顺序
+// sortBy=None + 有 groupItemThreshold（有序选项类，如温度/利率）→ 按 threshold 升序
+// gamma 数组顺序与价格都故意打乱，只有 threshold 能还原网页序
+const byThr = parseBins([{ markets:[
+  { groupItemTitle:'28C',   clobTokenIds:'["1","2"]', outcomePrices:'["0.01","0.99"]', groupItemThreshold:8 },
+  { groupItemTitle:'20Cdn', clobTokenIds:'["3","4"]', outcomePrices:'["0.01","0.99"]', groupItemThreshold:0 },
+  { groupItemTitle:'26C',   clobTokenIds:'["5","6"]', outcomePrices:'["0.99","0.01"]', groupItemThreshold:6 },
+  { groupItemTitle:'21C',   clobTokenIds:'["7","8"]', outcomePrices:'["0.01","0.99"]', groupItemThreshold:1 },
+]}]);
+assert.deepStrictEqual(byThr.map(b => b.title), ['20Cdn','21C','26C','28C']);
+
+// 无 sortBy 且无 threshold → 保持 gamma 原始顺序（安全兜底）
 const kept = parseBins([{ markets:[
-  { groupItemTitle:'a', clobTokenIds:'["1","2"]', outcomePrices:'["0.10","0.90"]' },
-  { groupItemTitle:'b', clobTokenIds:'["3","4"]', outcomePrices:'["0.40","0.60"]' },
+  { groupItemTitle:'a', clobTokenIds:'["1","2"]' },
+  { groupItemTitle:'b', clobTokenIds:'["3","4"]' },
 ]}]);
 assert.deepStrictEqual(kept.map(b => b.title), ['a','b']);
 
