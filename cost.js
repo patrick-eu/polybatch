@@ -26,4 +26,13 @@ function summarize(avgPrices, shares) {
   return { combined, totalSpend: combined * shares, profitable: combined < 1 };
 }
 
-if (typeof module !== 'undefined') module.exports = { calcLegCost, summarize };
+// 卖一价（asks 最低价，美元）→ 美分，保留 0.1¢；无卖单返回 null
+function bestAskCents(book) {
+  const asks = (book && book.asks) || [];
+  let lowest = Infinity;
+  for (const a of asks) { const p = Number(a.price); if (p > 0 && p < lowest) lowest = p; }
+  if (!Number.isFinite(lowest)) return null;
+  return Math.round(lowest * 1000) / 10; // 0.999 → 99.9
+}
+
+if (typeof module !== 'undefined') module.exports = { calcLegCost, summarize, bestAskCents };
