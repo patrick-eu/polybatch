@@ -2,16 +2,16 @@
 (function () {
   // 面板文案：JS 内置双语字典（运行时可切换，chrome.i18n 做不到运行时切换）。
   const STRINGS = {
-    en: { market:'MARKET', dir:'Direction', buyPerBin:'Buy per bin', shares:'shares',
-          loading:'Loading…', noBins:'No batchable bins found', place:'Place orders',
+    en: { market:'MARKET', dir:'Direction', buyPerBin:'Buy per option', shares:'shares',
+          loading:'Loading…', noBins:'No batchable options found', place:'Place orders',
           depth:'No depth', loadFail:'Load failed', spend:'Total spend',
           profit:'PROFITABLE', loss:'WILL LOSE', partial:'Some legs lack depth',
-          noChecked:'No bins selected', cantLocate:'Couldn’t locate order area — place manually:', legs:'legs' },
-    zh: { market:'市场', dir:'方向', buyPerBin:'每个 bin 买', shares:'share',
-          loading:'加载中…', noBins:'未识别到可批量的 bin', place:'下单',
+          noChecked:'No options selected', cantLocate:'Couldn’t locate order area — place manually:', legs:'legs' },
+    zh: { market:'市场', dir:'方向', buyPerBin:'每个选项买', shares:'份额',
+          loading:'加载中…', noBins:'未识别到可批量的选项', place:'下单',
           depth:'无深度', loadFail:'加载失败', spend:'总花费',
           profit:'可获利', loss:'会亏钱', partial:'部分腿深度不足',
-          noChecked:'未勾选任何 bin', cantLocate:'未定位到下单区，请手动下单：', legs:'腿' },
+          noChecked:'未勾选任何选项', cantLocate:'未定位到下单区，请手动下单：', legs:'腿' },
   };
   let lang = localStorage.getItem('pb_lang') || (navigator.language.startsWith('zh') ? 'zh' : 'en');
   const t = (k) => (STRINGS[lang] && STRINGS[lang][k]) || k;
@@ -26,8 +26,10 @@
   let active = null; // 当前已挂载面板 { slug, destroy }
 
   function getEventSlug() {
-    const p = location.pathname.split('/');
-    return (p[1] === 'event' && p[2]) ? p[2] : null;
+    // 兼容非英文界面的语言前缀（如 /es/event/<slug>）：找 'event' 段后的 slug，而非固定第 2 段
+    const p = location.pathname.split('/').filter(Boolean);
+    const i = p.indexOf('event');
+    return (i !== -1 && p[i + 1]) ? p[i + 1] : null;
   }
 
   function onRouteChange() {
