@@ -43,4 +43,12 @@ const kept = parseBins([{ markets:[
 ]}]);
 assert.deepStrictEqual(kept.map(b => b.title), ['a','b']);
 
+// 已结算 / 已淘汰 / 未激活的 market 被过滤，只保留可下注的
+const live = parseBins([{ markets:[
+  { groupItemTitle:'live',     clobTokenIds:'["1","2"]', acceptingOrders:true,  active:true,  closed:false },
+  { groupItemTitle:'settled',  clobTokenIds:'["3","4"]', acceptingOrders:false, active:true,  closed:true },
+  { groupItemTitle:'inactive', clobTokenIds:'["5","6"]', acceptingOrders:true,  active:false, closed:false },
+]}]);
+assert.deepStrictEqual(live.map(b => b.title), ['live']);
+
 console.log('clob.test.js PASS');

@@ -11,6 +11,7 @@
   border:1px solid var(--pb-line); border-radius:12px;
   box-shadow:0 10px 48px rgba(0,0,0,.55); overflow:hidden;
   -webkit-font-smoothing:antialiased;
+  transform:scale(1.5); transform-origin:top right; /* 整体放大 1.5×，锚右上不出界 */
 }
 #polybatch-panel * { box-sizing:border-box; }
 
@@ -56,7 +57,7 @@
 
 /* bin 行 */
 #polybatch-panel .pb-bins {
-  max-height:230px; overflow-y:auto; margin:11px -13px 0; padding:0 13px;
+  max-height:170px; overflow-y:auto; margin:11px -13px 0; padding:0 13px;
   border-top:1px solid var(--pb-line);
 }
 #polybatch-panel .pb-leg-row {

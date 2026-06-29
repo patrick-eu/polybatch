@@ -6,6 +6,8 @@ function parseBins(eventArr) {
   const ev = eventArr && eventArr[0];
   if (!ev || !ev.markets) return [];
   const bins = ev.markets.flatMap(m => {
+    // 只保留仍可下注的 bin：已结算 / 已淘汰 / 未激活的过滤掉
+    if (m.acceptingOrders === false || m.closed === true || m.active === false) return [];
     try {
       const tokens = JSON.parse(m.clobTokenIds);
       let price = 0;
