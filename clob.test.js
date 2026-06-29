@@ -1,6 +1,6 @@
 // clob.test.js
 const assert = require('assert');
-const { parseBins } = require('./clob.js');
+const { parseBins, eventSlugFromPath } = require('./clob.js');
 
 // 基本解析：title / token 提取
 const basic = parseBins([{ markets: [
@@ -80,5 +80,13 @@ const live = parseBins([{ markets:[
   { groupItemTitle:'inactive', clobTokenIds:'["5","6"]', acceptingOrders:true,  active:false, closed:false },
 ]}]);
 assert.deepStrictEqual(live.map(b => b.title), ['live']);
+
+// event slug 解析：兼容非英文语言前缀（用户实测格式 /it/ /zh/ /zh-hant/）
+assert.strictEqual(eventSlugFromPath('/event/fed-decision-in-july-181'), 'fed-decision-in-july-181');
+assert.strictEqual(eventSlugFromPath('/it/event/fed-decision-in-july-181'), 'fed-decision-in-july-181');
+assert.strictEqual(eventSlugFromPath('/zh/event/who-will-enter-iran'), 'who-will-enter-iran');
+assert.strictEqual(eventSlugFromPath('/zh-hant/event/brazil-presidential-election'), 'brazil-presidential-election');
+assert.strictEqual(eventSlugFromPath('/zh/politics'), null);   // 分类页非 event 页 → 不挂面板
+assert.strictEqual(eventSlugFromPath('/'), null);
 
 console.log('clob.test.js PASS');

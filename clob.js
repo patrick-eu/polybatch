@@ -48,4 +48,11 @@ async function fetchBook(tokenId) {
   return r.json();
 }
 
-if (typeof module !== 'undefined') module.exports = { parseBins, fetchEventBins, fetchBook };
+// 从 URL 路径取 event slug，兼容非英文语言前缀（/it/event/x、/zh/event/x、/zh-hant/event/x）；非 event 页返回 null
+function eventSlugFromPath(pathname) {
+  const p = (pathname || '').split('/').filter(Boolean);
+  const i = p.indexOf('event');
+  return (i !== -1 && p[i + 1]) ? p[i + 1] : null;
+}
+
+if (typeof module !== 'undefined') module.exports = { parseBins, fetchEventBins, fetchBook, eventSlugFromPath };
