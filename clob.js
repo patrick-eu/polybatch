@@ -55,4 +55,11 @@ function eventSlugFromPath(pathname) {
   return (i !== -1 && p[i + 1]) ? p[i + 1] : null;
 }
 
-if (typeof module !== 'undefined') module.exports = { parseBins, fetchEventBins, fetchBook, eventSlugFromPath };
+// 确认步汇总：把已勾选并算过成本的腿汇总成笔数 + 总花费 + 逐行项
+function buildOrderPlan(legs) {
+  const items = (legs || []).map(l => ({ title: l.title, shares: l.shares, dir: l.dir, cost: l.cost }));
+  const totalSpend = items.reduce((s, l) => s + (Number(l.cost) || 0), 0);
+  return { count: items.length, totalSpend, items };
+}
+
+if (typeof module !== 'undefined') module.exports = { parseBins, fetchEventBins, fetchBook, eventSlugFromPath, buildOrderPlan };

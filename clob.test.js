@@ -1,6 +1,6 @@
 // clob.test.js
 const assert = require('assert');
-const { parseBins, eventSlugFromPath } = require('./clob.js');
+const { parseBins, eventSlugFromPath, buildOrderPlan } = require('./clob.js');
 
 // 基本解析：title / token 提取
 const basic = parseBins([{ markets: [
@@ -99,5 +99,19 @@ assert.strictEqual(
 assert.strictEqual(
   eventSlugFromPath('/de/event/highest-temperature-in-guangzhou-on-june-29-2026/highest-temperature-in-guangzhou-on-june-29-2026-34c'),
   'highest-temperature-in-guangzhou-on-june-29-2026');
+
+// buildOrderPlan：确认步汇总——笔数、总花费、逐行透传
+const plan = buildOrderPlan([
+  { title:'70-72°F', shares:100, dir:'YES', cost:31 },
+  { title:'72-74°F', shares:100, dir:'YES', cost:28 },
+]);
+assert.strictEqual(plan.count, 2);
+assert.ok(Math.abs(plan.totalSpend - 59) < 1e-9, `totalSpend=${plan.totalSpend}`);
+assert.strictEqual(plan.items[0].title, '70-72°F');
+assert.strictEqual(plan.items[1].dir, 'YES');
+// 空 → count 0, totalSpend 0
+const empty = buildOrderPlan([]);
+assert.strictEqual(empty.count, 0);
+assert.strictEqual(empty.totalSpend, 0);
 
 console.log('clob.test.js PASS');
