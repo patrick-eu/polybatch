@@ -100,6 +100,7 @@
       state.bins.forEach((bin, i) => {
         const row = document.createElement('label');
         row.className = 'pb-leg-row';
+        row.style.setProperty('--i', i); // 级联进入动画的索引
         row.innerHTML = `<input type="checkbox" data-i="${i}">
           <span class="pb-leg-title">${bin.title}</span>
           <span class="pb-leg-cost" data-i="${i}">·</span>`;

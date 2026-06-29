@@ -1,113 +1,164 @@
-/* PolyBatch — 科技极简 HUD：深炭蓝 + 电蓝 accent + 薄荷/珊瑚盈亏色，等宽数字 */
+/* PolyBatch — 玻璃态科技 HUD
+   设计：深炭蓝玻璃（backdrop-blur）+ 降饱和钢蓝 accent + 噪点纹理 + 级联动效
+   字体用系统栈（content script 注入页面，不加载外部 web font 以避开 CSP 与性能开销） */
 #polybatch-panel {
-  --pb-bg:#0E1116; --pb-surface:#161A21; --pb-line:#222A35;
-  --pb-text:#E6E9EF; --pb-dim:#6B7585; --pb-accent:#5B8CFF;
-  --pb-profit:#3DD68C; --pb-loss:#FF5C72; --pb-amber:#FFB454;
-  --pb-mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,monospace;
-  --pb-sans:-apple-system,"Inter","Segoe UI",system-ui,sans-serif;
-  position:fixed; top:76px; right:16px; z-index:2147483646;
-  width:300px; background:var(--pb-bg); color:var(--pb-text);
-  font-family:var(--pb-sans); font-size:12px; line-height:1.45;
-  border:1px solid var(--pb-line); border-radius:12px;
-  box-shadow:0 10px 48px rgba(0,0,0,.55); overflow:hidden;
-  -webkit-font-smoothing:antialiased;
-  transform:scale(1.5); transform-origin:top right; /* 整体放大 1.5×，锚右上不出界 */
+  --pb-bg: rgba(13, 16, 22, 0.72);
+  --pb-surface: rgba(255, 255, 255, 0.04);
+  --pb-surface-2: rgba(255, 255, 255, 0.07);
+  --pb-line: rgba(255, 255, 255, 0.08);
+  --pb-text: #e8ebf1;
+  --pb-dim: #737e92;
+  --pb-accent: #5e8ad4;          /* 降饱和钢蓝，非饱和电蓝/AI 渐变 */
+  --pb-accent-bright: #7aa3e8;
+  --pb-profit: #3fcf8a;
+  --pb-loss: #f76b7e;
+  --pb-amber: #f0b757;
+  --pb-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+  --pb-sans: "SF Pro Display", -apple-system, "Segoe UI Variable Display", Inter, system-ui, sans-serif;
+
+  position: fixed; top: 72px; right: 18px; z-index: 2147483646;
+  width: 300px;
+  font-family: var(--pb-sans); font-size: 12px; line-height: 1.45; color: var(--pb-text);
+  font-variant-numeric: tabular-nums;
+  background: var(--pb-bg);
+  backdrop-filter: blur(28px) saturate(1.5);
+  -webkit-backdrop-filter: blur(28px) saturate(1.5);
+  border: 1px solid var(--pb-line);
+  border-radius: 16px;
+  box-shadow:
+    0 24px 64px -16px rgba(4, 8, 18, 0.7),   /* 冷色调阴影，非纯黑 */
+    0 2px 8px rgba(4, 8, 18, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08); /* 顶部高光，模拟玻璃边缘折射 */
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  transform: scale(1.5); transform-origin: top right;
+  animation: pb-in .42s cubic-bezier(.22,.61,.36,1);
 }
-#polybatch-panel * { box-sizing:border-box; }
+#polybatch-panel * { box-sizing: border-box; }
+
+/* 噪点纹理：破除数字平面感（pointer-events:none，不挡交互） */
+#polybatch-panel::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 5; border-radius: inherit;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: .04; mix-blend-mode: overlay;
+}
+@keyframes pb-in { from { opacity: 0; transform: scale(1.5) translateY(-8px); } to { opacity: 1; transform: scale(1.5) translateY(0); } }
 
 /* header */
 #polybatch-panel .pb-head {
-  display:flex; align-items:center; justify-content:space-between;
-  padding:11px 13px; border-bottom:1px solid var(--pb-line);
-  background:linear-gradient(180deg,#12161D,#0E1116);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 13px 14px 11px; border-bottom: 1px solid var(--pb-line);
 }
-#polybatch-panel .pb-brand { font-size:13px; letter-spacing:.04em; color:var(--pb-dim); font-weight:500; }
-#polybatch-panel .pb-brand b { color:var(--pb-text); font-weight:700; }
+#polybatch-panel .pb-brand { font-size: 13px; font-weight: 600; letter-spacing: -.01em; color: var(--pb-dim); }
+#polybatch-panel .pb-brand b { color: var(--pb-text); font-weight: 700; }
 
-/* segmented control（语言 + 方向共用） */
-#polybatch-panel .pb-seg { display:inline-flex; border:1px solid var(--pb-line); border-radius:7px; overflow:hidden; }
-#polybatch-panel .pb-seg button {
-  appearance:none; border:0; background:transparent; color:var(--pb-dim);
-  font-family:var(--pb-sans); font-size:11px; font-weight:600; letter-spacing:.03em;
-  padding:4px 10px; cursor:pointer; transition:background .12s,color .12s;
+/* segmented control */
+#polybatch-panel .pb-seg {
+  display: inline-flex; background: var(--pb-surface);
+  border: 1px solid var(--pb-line); border-radius: 9px; padding: 2px;
 }
-#polybatch-panel .pb-seg button.active { background:var(--pb-accent); color:#fff; }
-#polybatch-panel .pb-lang button { padding:3px 9px; }
+#polybatch-panel .pb-seg button {
+  appearance: none; border: 0; background: transparent; color: var(--pb-dim);
+  font-family: var(--pb-sans); font-size: 11px; font-weight: 600; letter-spacing: .01em;
+  padding: 4px 11px; border-radius: 7px; cursor: pointer;
+  transition: color .2s, background .2s, box-shadow .2s;
+}
+#polybatch-panel .pb-seg button.active {
+  background: linear-gradient(180deg, var(--pb-surface-2), var(--pb-surface));
+  color: var(--pb-text); box-shadow: 0 1px 2px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.08);
+}
+#polybatch-panel .pb-lang button { padding: 3px 9px; }
+#polybatch-panel .pb-dir button.active {
+  background: linear-gradient(180deg, var(--pb-accent-bright), var(--pb-accent));
+  color: #fff; box-shadow: 0 2px 8px -2px var(--pb-accent), inset 0 1px 0 rgba(255,255,255,.2);
+}
 
 #polybatch-panel .pb-slug {
-  font-family:var(--pb-mono); font-size:11px; letter-spacing:.05em;
-  padding:7px 13px; border-bottom:1px solid var(--pb-line);
-  overflow-wrap:anywhere; word-break:break-word; /* 过长 slug 换行而非省略号 */
+  font-family: var(--pb-mono); font-size: 11px; letter-spacing: .02em;
+  padding: 8px 14px; border-bottom: 1px solid var(--pb-line);
+  overflow-wrap: anywhere; word-break: break-word;
 }
-#polybatch-panel .pb-slug-label { color:var(--pb-dim); text-transform:uppercase; }
-#polybatch-panel .pb-slug-val { color:var(--pb-accent); font-weight:700; }
+#polybatch-panel .pb-slug-label { color: var(--pb-dim); text-transform: uppercase; letter-spacing: .08em; font-size: 9px; }
+#polybatch-panel .pb-slug-val { color: var(--pb-accent-bright); font-weight: 600; }
 
-#polybatch-panel .pb-body { padding:12px 13px; }
-#polybatch-panel .pb-dir { width:100%; margin-bottom:9px; }
-#polybatch-panel .pb-dir button { flex:1; padding:6px 0; }
+#polybatch-panel .pb-body { padding: 13px 14px; }
+#polybatch-panel .pb-dir { width: 100%; margin-bottom: 10px; }
+#polybatch-panel .pb-dir button { flex: 1; padding: 6px 0; }
 
 /* share 输入 */
-#polybatch-panel .pb-share { display:flex; align-items:center; gap:8px; margin-bottom:2px; color:var(--pb-dim); cursor:default; }
-#polybatch-panel .pb-share > span { flex:1; }
-#polybatch-panel .pb-share i { font-style:normal; font-size:11px; color:var(--pb-dim); }
+#polybatch-panel .pb-share { display: flex; align-items: center; gap: 8px; color: var(--pb-dim); }
+#polybatch-panel .pb-share > span { flex: 1; }
+#polybatch-panel .pb-share i { font-style: normal; font-size: 11px; }
 #polybatch-panel .pb-share input {
-  width:78px; background:var(--pb-surface); color:var(--pb-text);
-  font-family:var(--pb-mono); font-size:13px; text-align:right;
-  border:1px solid var(--pb-line); border-radius:6px; padding:5px 8px;
+  width: 80px; background: var(--pb-surface); color: var(--pb-text);
+  font-family: var(--pb-mono); font-size: 13px; text-align: right;
+  border: 1px solid var(--pb-line); border-radius: 8px; padding: 6px 9px;
+  transition: border-color .2s, box-shadow .2s;
 }
-#polybatch-panel .pb-share input:focus { outline:none; border-color:var(--pb-accent); }
+#polybatch-panel .pb-share input:focus { outline: none; border-color: var(--pb-accent); box-shadow: 0 0 0 3px rgba(94,138,212,.18); }
 
-/* bin 行 */
+/* bin 列表 */
 #polybatch-panel .pb-bins {
-  max-height:170px; overflow-y:auto; margin:11px -13px 0; padding:0 13px;
-  border-top:1px solid var(--pb-line);
+  max-height: 188px; overflow-y: auto; margin: 12px -14px 0; padding: 0 14px;
+  border-top: 1px solid var(--pb-line);
+  scrollbar-gutter: stable; scrollbar-width: thin;
+  scrollbar-color: var(--pb-accent) rgba(255,255,255,.08);
 }
 #polybatch-panel .pb-leg-row {
-  display:flex; align-items:center; gap:9px; padding:7px 0 7px 11px; margin-left:-13px;
-  border-bottom:1px solid rgba(255,255,255,.03); border-left:2px solid transparent; cursor:pointer;
+  display: flex; align-items: center; gap: 10px; padding: 8px 0 8px 12px; margin-left: -14px;
+  border-bottom: 1px solid rgba(255,255,255,.04); border-left: 2px solid transparent; cursor: pointer;
+  transition: background .18s, border-color .18s;
+  animation: pb-row-in .35s both; animation-delay: calc(var(--i, 0) * 28ms);
 }
-#polybatch-panel .pb-leg-row.on { border-left-color:var(--pb-accent); background:rgba(91,140,255,.05); }
-#polybatch-panel .pb-leg-row input { accent-color:var(--pb-accent); width:13px; height:13px; flex:none; }
-#polybatch-panel .pb-leg-title { flex:1; color:var(--pb-text); }
-#polybatch-panel .pb-leg-cost { font-family:var(--pb-mono); font-size:11px; color:var(--pb-dim); }
-#polybatch-panel .pb-leg-cost.warn { color:var(--pb-amber); }
+@keyframes pb-row-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+#polybatch-panel .pb-leg-row:hover { background: rgba(255,255,255,.025); }
+#polybatch-panel .pb-leg-row.on { border-left-color: var(--pb-accent); background: rgba(94,138,212,.07); }
+#polybatch-panel .pb-leg-row input { accent-color: var(--pb-accent); width: 14px; height: 14px; flex: none; }
+#polybatch-panel .pb-leg-title { flex: 1; color: var(--pb-text); }
+#polybatch-panel .pb-leg-cost { font-family: var(--pb-mono); font-size: 11px; color: var(--pb-dim); }
+#polybatch-panel .pb-leg-cost.warn { color: var(--pb-amber); }
 
-/* verdict — signature：大号等宽综合成本 + 盈亏胶囊 + vs $1.00 标尺 */
-#polybatch-panel .pb-verdict { margin-top:13px; }
-#polybatch-panel .pb-empty { font-family:var(--pb-mono); color:var(--pb-dim); font-size:11px; }
-#polybatch-panel .pb-combined { display:flex; align-items:baseline; justify-content:space-between; }
-#polybatch-panel .pb-num { font-family:var(--pb-mono); font-size:26px; font-weight:600; letter-spacing:-.01em; }
-#polybatch-panel .pb-combined.win .pb-num { color:var(--pb-profit); }
-#polybatch-panel .pb-combined.lose .pb-num { color:var(--pb-loss); }
-#polybatch-panel .pb-pill { font-size:10px; font-weight:700; letter-spacing:.08em; padding:3px 8px; border-radius:5px; }
-#polybatch-panel .pb-combined.win .pb-pill { color:var(--pb-profit); background:rgba(61,214,140,.12); }
-#polybatch-panel .pb-combined.lose .pb-pill { color:var(--pb-loss); background:rgba(255,92,114,.12); }
+/* verdict — signature */
+#polybatch-panel .pb-verdict { margin-top: 14px; }
+#polybatch-panel .pb-empty { font-family: var(--pb-mono); color: var(--pb-dim); font-size: 11px; }
+#polybatch-panel .pb-combined { display: flex; align-items: baseline; justify-content: space-between; }
+#polybatch-panel .pb-num { font-family: var(--pb-mono); font-size: 28px; font-weight: 600; letter-spacing: -.02em; }
+#polybatch-panel .pb-combined.win .pb-num { color: var(--pb-profit); }
+#polybatch-panel .pb-combined.lose .pb-num { color: var(--pb-loss); }
+/* 胶囊 → 方形标签 */
+#polybatch-panel .pb-pill { font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; padding: 4px 8px; border-radius: 6px; }
+#polybatch-panel .pb-combined.win .pb-pill { color: var(--pb-profit); background: rgba(63,207,138,.13); box-shadow: inset 0 0 0 1px rgba(63,207,138,.25); }
+#polybatch-panel .pb-combined.lose .pb-pill { color: var(--pb-loss); background: rgba(247,107,126,.13); box-shadow: inset 0 0 0 1px rgba(247,107,126,.25); }
 
-/* 标尺：满轨 = $1.00 基准，fill 越接近满越逼近盈亏临界 */
-#polybatch-panel .pb-gauge { position:relative; height:3px; background:var(--pb-line); border-radius:2px; margin:9px 0 10px; }
-#polybatch-panel .pb-gauge-fill { height:100%; border-radius:2px; transition:width .25s ease; }
-#polybatch-panel .pb-gauge-fill.win { background:var(--pb-profit); }
-#polybatch-panel .pb-gauge-fill.lose { background:var(--pb-loss); }
+/* gauge：vs $1.00 基准，带光晕 */
+#polybatch-panel .pb-gauge { position: relative; height: 4px; background: rgba(255,255,255,.07); border-radius: 3px; margin: 11px 0; overflow: hidden; }
+#polybatch-panel .pb-gauge-fill { height: 100%; border-radius: 3px; transition: width .35s cubic-bezier(.22,.61,.36,1); }
+#polybatch-panel .pb-gauge-fill.win { background: linear-gradient(90deg, rgba(63,207,138,.5), var(--pb-profit)); box-shadow: 0 0 8px rgba(63,207,138,.5); }
+#polybatch-panel .pb-gauge-fill.lose { background: linear-gradient(90deg, rgba(247,107,126,.5), var(--pb-loss)); box-shadow: 0 0 8px rgba(247,107,126,.5); }
 
-#polybatch-panel .pb-foot { display:flex; justify-content:space-between; font-family:var(--pb-mono); font-size:10px; color:var(--pb-dim); }
-#polybatch-panel .pb-foot b { color:var(--pb-text); font-weight:600; }
-#polybatch-panel .pb-partial { margin-top:6px; font-size:10px; color:var(--pb-amber); }
+#polybatch-panel .pb-foot { display: flex; justify-content: space-between; font-family: var(--pb-mono); font-size: 10px; color: var(--pb-dim); }
+#polybatch-panel .pb-foot b { color: var(--pb-text); font-weight: 600; }
+#polybatch-panel .pb-partial { margin-top: 7px; font-size: 10px; color: var(--pb-amber); }
 
-/* 下单 */
+/* submit */
 #polybatch-panel .pb-submit {
-  width:100%; margin-top:13px; padding:9px; border:0; border-radius:8px;
-  background:var(--pb-accent); color:#fff; font-family:var(--pb-sans);
-  font-size:12px; font-weight:600; letter-spacing:.02em; cursor:pointer; transition:filter .12s;
+  width: 100%; margin-top: 14px; padding: 10px; border: 0; border-radius: 10px;
+  background: linear-gradient(180deg, var(--pb-accent-bright), var(--pb-accent));
+  color: #fff; font-family: var(--pb-sans); font-size: 12px; font-weight: 600; letter-spacing: .01em;
+  cursor: pointer; box-shadow: 0 4px 16px -4px var(--pb-accent), inset 0 1px 0 rgba(255,255,255,.2);
+  transition: transform .12s, box-shadow .2s, filter .2s;
 }
-#polybatch-panel .pb-submit:hover { filter:brightness(1.1); }
-#polybatch-panel .pb-submit:active { filter:brightness(.95); }
+#polybatch-panel .pb-submit:hover { filter: brightness(1.08); box-shadow: 0 6px 22px -4px var(--pb-accent), inset 0 1px 0 rgba(255,255,255,.25); }
+#polybatch-panel .pb-submit:active { transform: scale(.985); }
 
-#polybatch-panel .pb-bins {
-  scrollbar-gutter:stable; scrollbar-width:thin;
-  scrollbar-color:var(--pb-accent) rgba(255,255,255,.08); /* 标准属性兜底（Firefox/新Chrome） */
-}
-#polybatch-panel .pb-bins::-webkit-scrollbar { width:10px; }
-#polybatch-panel .pb-bins::-webkit-scrollbar-track { background:rgba(255,255,255,.06); border-radius:5px; }
-#polybatch-panel .pb-bins::-webkit-scrollbar-thumb { background:var(--pb-accent); border-radius:5px; min-height:32px; }
+/* 无障碍焦点环 */
+#polybatch-panel button:focus-visible,
+#polybatch-panel input:focus-visible { outline: 2px solid var(--pb-accent-bright); outline-offset: 2px; }
 
-@media (prefers-reduced-motion:reduce) { #polybatch-panel * { transition:none !important; } }
+/* scrollbar */
+#polybatch-panel .pb-bins::-webkit-scrollbar { width: 10px; }
+#polybatch-panel .pb-bins::-webkit-scrollbar-track { background: rgba(255,255,255,.05); border-radius: 5px; }
+#polybatch-panel .pb-bins::-webkit-scrollbar-thumb { background: var(--pb-accent); border-radius: 5px; min-height: 32px; border: 2px solid transparent; background-clip: padding-box; }
+#polybatch-panel .pb-bins::-webkit-scrollbar-thumb:hover { background: var(--pb-accent-bright); background-clip: padding-box; }
+
+@media (prefers-reduced-motion: reduce) { #polybatch-panel, #polybatch-panel * { animation: none !important; transition: none !important; } }
