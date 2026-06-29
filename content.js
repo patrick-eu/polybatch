@@ -6,6 +6,13 @@
   const state = { dir: 'YES', shares: 100, checked: new Set(), bins: [] };
   const bookCache = {}; // tokenId -> book
 
+  // 易变的页面选择器集中此处；值需在真实 event 页用 DevTools 确认后填入
+  const PB_SELECTORS = {
+    binCard: '[data-bin-card]',       // 按 bin 标题定位的下单卡片容器
+    dirToggle: '[data-outcome]',      // YES/NO 切换控件
+    shareInput: 'input[inputmode="decimal"]', // share 数输入框
+  };
+
   const panel = document.createElement('div');
   panel.id = 'polybatch-panel';
   panel.innerHTML = `
@@ -84,9 +91,26 @@
   }
 
   async function submitLeg(leg) {
-    // Task 5 替换为 DOM 填表单实现
-    console.log('[PolyBatch] submitLeg', leg);
-    alert(`请手动下单：${leg.dir} ${leg.bin.title} x${leg.shares} share（自动填表单下一版加入）`);
+    const card = locateBinCard(leg.bin.title);
+    if (!card) { alert(`未定位到 bin「${leg.bin.title}」的下单区，请手动下单`); return; }
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+    const dirBtn = [...card.querySelectorAll(PB_SELECTORS.dirToggle)]
+      .find(el => el.textContent.trim().toUpperCase().startsWith(leg.dir));
+    if (dirBtn) dirBtn.click();
+
+    const input = card.querySelector(PB_SELECTORS.shareInput);
+    if (input) {
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+      setter.call(input, String(leg.shares));            // 绕过 React 受控组件
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    card.style.outline = '2px solid #4f7cff';            // 高亮，提示用户点 Buy + 签名
+  }
+
+  function locateBinCard(title) {
+    const cards = document.querySelectorAll(PB_SELECTORS.binCard);
+    return [...cards].find(c => c.textContent.includes(title)) || null;
   }
 
   async function onSubmit() {
