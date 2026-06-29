@@ -5,6 +5,7 @@
 
   const state = { dir: 'YES', shares: 100, checked: new Set(), bins: [] };
   const bookCache = {}; // tokenId -> book
+  let _gen = 0; // recompute 代次，防过期写入
 
   // 易变的页面选择器集中此处；值需在真实 event 页用 DevTools 确认后填入
   const PB_SELECTORS = {
@@ -66,17 +67,24 @@
 
   async function bookFor(bin) {
     const t = tokenFor(bin);
-    if (!bookCache[t]) bookCache[t] = await fetchBook(t);
-    return bookCache[t];
+    const c = bookCache[t];
+    if (c && (Date.now() - c.ts) < 30000) return c.book;
+    const book = await fetchBook(t);
+    bookCache[t] = { book, ts: Date.now() };
+    return book;
   }
 
   async function recompute() {
+    const gen = ++_gen;
     let total = 0, totalShares = 0, ok = true;
     for (let i = 0; i < state.bins.length; i++) {
       const span = panel.querySelector(`.pb-leg[data-i="${i}"]`);
       if (!span) continue;
       if (!state.checked.has(i)) { span.textContent = '--'; span.className = 'pb-leg'; continue; }
-      const book = await bookFor(state.bins[i]);
+      let book;
+      try { book = await bookFor(state.bins[i]); }
+      catch { if (gen !== _gen) return; span.textContent = '加载失败'; span.className = 'pb-leg pb-warn'; ok = false; continue; }
+      if (gen !== _gen) return;
       const r = calcLegCost(book, state.shares);
       if (!r.enough) { span.textContent = '深度不足'; span.className = 'pb-leg pb-warn'; ok = false; continue; }
       span.textContent = `$${r.avgPrice.toFixed(2)} $${r.cost.toFixed(1)}`;
@@ -108,6 +116,7 @@
     card.style.outline = '2px solid #4f7cff';            // 高亮，提示用户点 Buy + 签名
   }
 
+  // ponytail: 子串匹配；若某 bin 标题是另一个的子串，需在真实 DOM 上改用精确的标题元素选择器（连同 PB_SELECTORS 一并确认）
   function locateBinCard(title) {
     const cards = document.querySelectorAll(PB_SELECTORS.binCard);
     return [...cards].find(c => c.textContent.includes(title)) || null;

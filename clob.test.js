@@ -20,4 +20,12 @@ assert.strictEqual(bins[1].yesToken, '333');
 assert.deepStrictEqual(parseBins([{}]), []);
 assert.deepStrictEqual(parseBins([]), []);
 
+// 单个 market 的 clobTokenIds 非法时只跳过它，保留正常的
+const mixed = parseBins([{ markets: [
+  { groupItemTitle:'good', clobTokenIds:'["1","2"]' },
+  { groupItemTitle:'bad', clobTokenIds:'INVALID' },
+]}]);
+assert.strictEqual(mixed.length, 1);
+assert.strictEqual(mixed[0].title, 'good');
+
 console.log('clob.test.js PASS');
