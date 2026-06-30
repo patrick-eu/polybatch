@@ -7,21 +7,21 @@
           depth:'No depth', loadFail:'Load failed', spend:'Total spend',
           profit:'PROFITABLE', loss:'WILL LOSE', partial:'Some legs lack depth',
           noChecked:'No options selected', cantLocate:'Couldn’t locate order area — place manually:', legs:'legs', confirmTitle:'Confirm order', confirmBtn:'Confirm', cancelBtn:'Cancel', abortBtn:'Abort',
-          legProgress:'Leg', awaitingSign:'Sign in MetaMask…', switching:'Switching…',
+          legProgress:'Leg', awaitingSign:'Sign in your wallet…', switching:'Switching…',
           filledMsg:'submitted', timeoutMsg:'not confirmed — continue / skip / abort',
           contBtn:'Continue', skipBtn:'Skip', allDone:'All legs submitted',
           aborted:'aborted', limitNote:'Limit @ best ask — size beyond the top ask may not fill',
-          placing:'Placing…', placedAll:'orders placed — sign each in MetaMask' },
+          placing:'Placing…', placedAll:'orders submitted' },
     zh: { market:'市场', dir:'方向', buyPerBin:'每个选项买', shares:'份额',
           loading:'加载中…', noBins:'未识别到可批量的选项', place:'下单',
           depth:'无深度', loadFail:'加载失败', spend:'总花费',
           profit:'可获利', loss:'会亏钱', partial:'部分腿深度不足',
           noChecked:'未勾选任何选项', cantLocate:'未定位到下单区，请手动下单：', legs:'腿', confirmTitle:'确认下单', confirmBtn:'确认下单', cancelBtn:'取消', abortBtn:'中止',
-          legProgress:'第', awaitingSign:'请在 MetaMask 签名…', switching:'切换中…',
+          legProgress:'第', awaitingSign:'请在钱包中签名…', switching:'切换中…',
           filledMsg:'已提交', timeoutMsg:'未确认成交 — 继续 / 跳过 / 中止',
           contBtn:'继续', skipBtn:'跳过', allDone:'全部已提交',
           aborted:'已中止', limitNote:'限价挂卖一价，超出卖一档的份额可能不会成交',
-          placing:'挂单中…', placedAll:'笔已挂出，请在 MetaMask 依次签名' },
+          placing:'挂单中…', placedAll:'笔已提交' },
   };
   let lang = localStorage.getItem('pb_lang') || (navigator.language.startsWith('zh') ? 'zh' : 'en');
   const t = (k) => (STRINGS[lang] && STRINGS[lang][k]) || k;
@@ -276,30 +276,44 @@
       // 4. 点 Place buy order → 弹 MetaMask（用户签名）。切到新 bin 后按钮可能还在重渲染，轮询等它出现。
       const btn = await waitEl(PB_SELECTORS.placeOrderBtn);
       if (!btn) throw new Error('place');
-      // 等 React 跑完校验解锁按钮；仍禁用说明价/量没被接收，别点死按钮（否则静默无反应、不弹签名）
-      for (let i = 0; i < 6 && !placeBtnEnabled(btn); i++) await sleep(250);
-      if (!placeBtnEnabled(btn)) throw new Error('disabled');
-      realClick(btn); // 必须用完整指针序列：单纯 .click() 不触发该动画按钮的下单逻辑、不弹签名
-    }
-
-    // 完成信号：下单按钮文字「Placing buy order」＝签名/提交进行中，会一直持续到 MetaMask 签完。
-    // （份额输入是点击即清空的乐观重置，会在签名前就清，不能用作完成信号——实测踩过这个坑。）
-    // 等到先见 Placing、再退出 Placing ＝ 本笔已签/已提交，才放行下一笔。
-    // ponytail: 靠按钮文案，页面改版需重核；签名被拒同样会退出 Placing，按已完成处理（移到下一笔）。
-    async function waitForFill(timeoutMs) {
-      const start = Date.now();
-      const isPlacing = () => {
-        const b = document.querySelector(PB_SELECTORS.placeOrderBtn);
-        return !!b && b.textContent.toLowerCase().includes('placing');
-      };
-      let sawPlacing = false;
-      while (Date.now() - start < timeoutMs) {
-        if (_abort) return 'abort';
-        if (isPlacing()) sawPlacing = true;
-        else if (sawPlacing) return 'filled';
+      // 等按钮解锁再点（禁用时点死按钮会静默无反应、不弹签名）。
+      // 上一笔成交后 post-order 重渲染会让 React 受控态与 DOM 脱节：价/量值在 DOM 里但按钮仍禁用
+      //（Magic 即时成交后必现；MetaMask 靠人工签名耗时盖过这段，所以没暴露）。
+      // 故周期性「重填一次」价/量，重走事件链戳 React 重新校验解锁；间隔留足让校验跑完（太密会一直 dirty）。
+      for (let k = 0; k < 28 && !placeBtnEnabled(btn); k++) {
+        if (_abort) break;
+        if (k % 4 === 0) {
+          const pi = document.querySelector(PB_SELECTORS.limitPriceInput);
+          const si = document.querySelector(PB_SELECTORS.sharesInput);
+          if (pi) setNativeValue(pi, cents);
+          if (si) setNativeValue(si, leg.shares);
+        }
         await sleep(300);
       }
-      return 'timeout';
+      if (!placeBtnEnabled(btn)) throw new Error('disabled');
+      const fill = armFillWatcher(ORDER_TIMEOUT); // 点击前装好成交监听（Magic 的 toast 瞬时，晚装会漏）
+      realClick(btn); // 必须用完整指针序列：单纯 .click() 不触发该动画按钮的下单逻辑、不弹签名
+      return fill; // 成交等待 promise → submitBatch await 它再放行下一笔
+    }
+
+    // 完成信号：下单成功后 Polymarket 弹出的 toast（<li> 文本含「Buy Yes/No placed」）。
+    // 这是与签名方式无关的真信号——MetaMask（弹窗签名、数秒）和 Magic（无签名、瞬时）都只在订单真正成交时才弹。
+    // 必须在点击下单「之前」就 arm 监听：Magic 的 toast 一闪而过，轮询/晚装会漏（之前用按钮 Placing 状态就栽在这）。
+    // ponytail: 匹配英文 toast 文案，页面/语言改版需重核；捕获不到则超时暂停由用户决定（安全降级）。
+    function armFillWatcher(timeoutMs) {
+      const isPlaced = (n) => n && n.nodeType === 1 && /buy (yes|no) placed/i.test(n.textContent || '');
+      return new Promise((resolve) => {
+        let done = false;
+        const finish = (r) => { if (done) return; done = true; clearInterval(ab); clearTimeout(to); obs.disconnect(); resolve(r); };
+        const obs = new MutationObserver((muts) => {
+          for (const m of muts) for (const n of m.addedNodes) {
+            if (isPlaced(n) || (n.nodeType === 1 && [...(n.querySelectorAll ? n.querySelectorAll('*') : [])].some(isPlaced))) return finish('filled');
+          }
+        });
+        obs.observe(document.body, { childList: true, subtree: true });
+        const ab = setInterval(() => { if (_abort) finish('abort'); }, 200);
+        const to = setTimeout(() => finish('timeout'), timeoutMs);
+      });
     }
 
     let _abort = false;
@@ -344,7 +358,7 @@
       panel.querySelector('#pb-confirm').onclick = () => { _running = true; submitBatch(legs).finally(() => { _running = false; }); };
     }
 
-    // 逐笔编排：确认 → 对每个勾选 bin 跑 submitLeg（弹 MetaMask）→ waitForFill 等签完 → 下一笔。
+    // 逐笔编排：确认 → 对每个勾选 bin 跑 submitLeg（点下单）→ 等成交 toast（armFillWatcher）→ 下一笔。
     // 任一步失败/超时都暂停让用户选（跳过/继续/中止），绝不盲目连发下一笔。
     async function submitBatch(legs) {
       _abort = false;
@@ -356,8 +370,9 @@
         overlay(`<div class="pb-ov-title">${t('legProgress')} ${i + 1}/${n} · ${t('placing')}</div>
                  <div class="pb-ov-actions">${showAbort}</div>`);
         panel.querySelector('#pb-abort').onclick = () => { _abort = true; };
+        let fill;
         try {
-          await submitLeg(legs[i]); // 点 bin→填价填量→place buy order，发起 MetaMask 签名
+          fill = await submitLeg(legs[i]); // 点 bin→填价填量→place buy order；返回成交等待 promise
           placed++;
         } catch (e) {
           console.error('[PB] submitLeg 失败 leg', i + 1, e);
@@ -373,27 +388,25 @@
           if (act === 'abort') { _abort = true; break; }
           skipped++; continue;
         }
-        // 逐笔等待：本笔已弹 MetaMask，必须等用户签完（下单表单复位＝份额被清空）再下一笔，
-        // 否则下一笔的点击会被正打开的 MetaMask 挡掉而丢失（实验版连续下单就是这个 bug）。
-        if (i < legs.length - 1) {
-          overlay(`<div class="pb-ov-title">${t('legProgress')} ${i + 1}/${n} · ${t('awaitingSign')}</div>
-                   <div class="pb-ov-actions">${showAbort}</div>`);
-          panel.querySelector('#pb-abort').onclick = () => { _abort = true; };
-          const r = await waitForFill(ORDER_TIMEOUT);
-          if (r === 'abort') { _abort = true; break; }
-          if (r === 'timeout') {
-            // 没检测到本笔完成 → 暂停让用户决定，绝不盲目连发下一笔（设计 §4.3）
-            overlay(`<div class="pb-ov-title pb-warn">${t('legProgress')} ${i + 1}/${n} · ${t('timeoutMsg')}</div>
-                     <div class="pb-ov-actions">
-                       <button id="pb-cont" class="pb-submit">${t('contBtn')}</button>
-                       <button id="pb-abort" class="pb-ghost">${t('abortBtn')}</button>
-                     </div>`);
-            const act = await new Promise(res => {
-              panel.querySelector('#pb-cont').onclick = () => res('cont');
-              panel.querySelector('#pb-abort').onclick = () => res('abort');
-            });
-            if (act === 'abort') { _abort = true; break; }
-          }
+        // 逐笔等待本笔成交 toast 再放行下一笔（与签名方式无关：MetaMask 等签名、Magic 瞬时都覆盖）。
+        // 否则下一笔会在前一笔尚未落定时切换 bin、把它冲掉。超时则暂停让用户决定，绝不盲目连发。
+        overlay(`<div class="pb-ov-title">${t('legProgress')} ${i + 1}/${n} · ${t('awaitingSign')}</div>
+                 <div class="pb-ov-actions">${showAbort}</div>`);
+        panel.querySelector('#pb-abort').onclick = () => { _abort = true; };
+        const r = await fill;
+        if (r === 'abort') { _abort = true; break; }
+        if (r === 'timeout') {
+          // 没捕获到成交 toast → 暂停让用户决定，绝不盲目连发下一笔（设计 §4.3）
+          overlay(`<div class="pb-ov-title pb-warn">${t('legProgress')} ${i + 1}/${n} · ${t('timeoutMsg')}</div>
+                   <div class="pb-ov-actions">
+                     <button id="pb-cont" class="pb-submit">${t('contBtn')}</button>
+                     <button id="pb-abort" class="pb-ghost">${t('abortBtn')}</button>
+                   </div>`);
+          const act = await new Promise(res => {
+            panel.querySelector('#pb-cont').onclick = () => res('cont');
+            panel.querySelector('#pb-abort').onclick = () => res('abort');
+          });
+          if (act === 'abort') { _abort = true; break; }
         }
       }
       const tail = `${placed} ${t('placedAll')}${skipped ? ' · ' + skipped + ' ' + t('skipBtn') : ''}${_abort ? ' · ' + t('aborted') : ''}`;
