@@ -172,67 +172,132 @@
     const PB_SELECTORS = {
       binRow: 'a[data-id]',                              // bin 行（左侧温度选项，是 <a> 链接）
       binTitle: 'p.font-semibold.truncate',              // 行内标题（取文本匹配 bin.title）
-      rowYes: 'button[class*="text-green-500"]',         // 行内 Buy Yes（绿）→ 选 bin+YES
-      rowNo: 'button[class*="text-red-500"]',            // 行内 Buy No（红）→ 选 bin+NO
-      limitPriceInput: 'input[inputmode="decimal"][placeholder="0.0¢"]', // 限价输入（美分）
-      sharesInput: 'input[inputmode="decimal"][placeholder="0"]',        // 份额输入
+      rowDirBtn: 'button',                               // 行内方向按钮（绿 Buy Yes / 红 Buy No），靠文本区分
+      limitPriceInput: 'input[inputmode="decimal"][placeholder*="¢"]', // 限价输入（美分）；placeholder 在 0.0¢/0¢ 间变，用含¢子串匹配
+      sharesInput: 'input[inputmode="decimal"][placeholder="0"]',      // 份额输入（placeholder 恒为 0，不带¢）
       placeOrderBtn: '.trading-button[data-color="blue"]',               // Place buy order
     };
     const ORDER_TIMEOUT = 60000;
-    const SUBMIT_GAP = 1500; // 实验版：连续挂单时笔间间隔（ms），给 MetaMask 接收上一笔签名请求的时间；可调
 
+    // 真实下单区是 react-number-format 类格式化输入：只派 input 不够，按钮验证不解锁。
+    // 用原型 value setter 绕开 React 的 _valueTracker（保留实例 setter 时优先用它），
+    // 再 focus→input→change→blur 走完一整条「人在打字」的事件链，触发校验、解锁按钮。
     function setNativeValue(input, value) {
-      const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+      const proto = Object.getPrototypeOf(input);
+      const protoSetter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+      const ownSetter = Object.getOwnPropertyDescriptor(input, 'value') &&
+                        Object.getOwnPropertyDescriptor(input, 'value').set;
+      const setter = (ownSetter && ownSetter !== protoSetter) ? ownSetter : protoSetter;
+      input.focus();
+      setter.call(input, '');                                       // 先清空，让格式化器从空重算
+      input.dispatchEvent(new Event('input', { bubbles: true }));
       setter.call(input, String(value));
       input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      input.blur();
     }
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    // 切 bin / 上一笔刚完成后，右侧下单组件会重渲染，输入框/按钮不是立即就位 → 轮询等它出现
+    async function waitEl(sel, tries = 12, gap = 250) {
+      let el = document.querySelector(sel);
+      for (let k = 0; k < tries && !el; k++) { await sleep(gap); el = document.querySelector(sel); }
+      return el;
+    }
+
+    // Place buy order 按钮无 disabled 属性、不换 class，禁用态只体现在两个 CSS 变量都为 0
+    // （启用：--btn-hover-offset 1.5px / --btn-click-damping 2px；禁用：均 0px）。
+    // ponytail: 依赖这两个 inline CSS 变量，页面改版需重核；这是当前唯一可观测的启用信号。
+    function placeBtnEnabled(btn) {
+      const cs = getComputedStyle(btn);
+      const off = cs.getPropertyValue('--btn-hover-offset').trim();
+      const damp = cs.getPropertyValue('--btn-click-damping').trim();
+      return !(parseFloat(off) === 0 && parseFloat(damp) === 0);
+    }
+
+    // Place buy order 是 data-three-dee 动画按钮，下单逻辑绑在 pointer/mouse 事件上，
+    // 单纯 .click() 只派 click（GTM 能抓到但不触发下单）。派完整指针序列才触发 React onPointerDown/Up。
+    function realClick(el) {
+      const r = el.getBoundingClientRect();
+      const x = r.left + r.width / 2, y = r.top + r.height / 2;
+      const base = { bubbles: true, cancelable: true, composed: true, view: window, clientX: x, clientY: y, button: 0 };
+      const pdown = { ...base, buttons: 1, pointerId: 1, pointerType: 'mouse', isPrimary: true };
+      const pup = { ...base, buttons: 0, pointerId: 1, pointerType: 'mouse', isPrimary: true };
+      el.dispatchEvent(new PointerEvent('pointerover', pdown));
+      el.dispatchEvent(new PointerEvent('pointerenter', pdown));
+      el.dispatchEvent(new MouseEvent('mouseover', { ...base, buttons: 0 }));
+      el.dispatchEvent(new PointerEvent('pointerdown', pdown));
+      el.dispatchEvent(new MouseEvent('mousedown', { ...base, buttons: 1 }));
+      if (typeof el.focus === 'function') el.focus();
+      el.dispatchEvent(new PointerEvent('pointerup', pup));
+      el.dispatchEvent(new MouseEvent('mouseup', { ...base, buttons: 0 }));
+      el.dispatchEvent(new MouseEvent('click', { ...base, buttons: 0 }));
+    }
 
     async function submitLeg(leg) {
-      // 1. 定位 bin 行（标题精确匹配），点行内方向按钮 → 右侧组件加载该 bin + 方向
-      //    不点整行 <a>（会导航走）；方向靠按钮颜色（绿=Yes/红=No），文本不可靠
-      const row = [...document.querySelectorAll(PB_SELECTORS.binRow)]
-        .find(r => { const e = r.querySelector(PB_SELECTORS.binTitle); return e && e.textContent.trim() === leg.bin.title; });
+      // 1. 定位 bin 行 + 方向按钮：页面用 Tailwind 工具类、无 data-id，类名/结构不稳，
+      //    所以靠「内容」定位——找文本严格等于标题的叶子元素（排除本插件面板自身，标题在两处都出现），
+      //    向上回溯到含 Buy Yes/Buy No 按钮的最近祖先即该 bin 行容器，再取对应方向按钮（点按钮不导航，非 <a>）。
+      const wantText = leg.dir === 'YES' ? 'buy yes' : 'buy no';
+      const titleEls = [...document.querySelectorAll('*')].filter(el =>
+        el.children.length === 0 &&
+        el.textContent.trim() === leg.bin.title &&
+        !el.closest('#polybatch-panel'));
+      let row = null, dirBtn = null;
+      for (const el of titleEls) {
+        let node = el;
+        for (let up = 0; up < 8 && node; up++) {
+          const btns = [...node.querySelectorAll('button')].filter(b => /buy (yes|no)/i.test(b.textContent));
+          if (btns.length) { dirBtn = btns.find(b => b.textContent.toLowerCase().includes(wantText)); row = node; break; }
+          node = node.parentElement;
+        }
+        if (row) break;
+      }
       if (!row) throw new Error('bin');
-      row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      const dirBtn = row.querySelector(leg.dir === 'YES' ? PB_SELECTORS.rowYes : PB_SELECTORS.rowNo);
       if (!dirBtn) throw new Error('dir');
+      row.scrollIntoView({ behavior: 'smooth', block: 'center' });
       dirBtn.click();
       await sleep(500); // 等右侧组件加载该 bin
 
-      // 2. 卖一价（美分）→ Limit price
+      // 2. 卖一价（美分）→ Limit price（轮询后仍无可能是组件落在 Market 模式，无限价框）
       const book = await bookFor(leg.bin);
       const cents = bestAskCents(book);
       if (cents == null) throw new Error('ask');
-      const priceInput = document.querySelector(PB_SELECTORS.limitPriceInput);
-      if (!priceInput) throw new Error('price'); // 若组件落在 Market 模式会没此框
+      const priceInput = await waitEl(PB_SELECTORS.limitPriceInput);
+      if (!priceInput) throw new Error('price');
       setNativeValue(priceInput, cents);
       await sleep(150);
 
       // 3. 份额
-      const sharesEl = document.querySelector(PB_SELECTORS.sharesInput);
+      const sharesEl = await waitEl(PB_SELECTORS.sharesInput);
       if (!sharesEl) throw new Error('shares');
       setNativeValue(sharesEl, leg.shares);
       await sleep(150);
 
-      // 4. 点 Place buy order → 弹 MetaMask（用户签名）
-      const btn = document.querySelector(PB_SELECTORS.placeOrderBtn);
+      // 4. 点 Place buy order → 弹 MetaMask（用户签名）。切到新 bin 后按钮可能还在重渲染，轮询等它出现。
+      const btn = await waitEl(PB_SELECTORS.placeOrderBtn);
       if (!btn) throw new Error('place');
-      btn.click();
+      // 等 React 跑完校验解锁按钮；仍禁用说明价/量没被接收，别点死按钮（否则静默无反应、不弹签名）
+      for (let i = 0; i < 6 && !placeBtnEnabled(btn); i++) await sleep(250);
+      if (!placeBtnEnabled(btn)) throw new Error('disabled');
+      realClick(btn); // 必须用完整指针序列：单纯 .click() 不触发该动画按钮的下单逻辑、不弹签名
     }
 
-    // 份额输入「先有值、后被清空」视为该笔已提交；先见值避免填充失败/签名前的误判。
-    // ponytail: 仍是表单信号，真实页面需验证清空时机；中止时即时返回。
+    // 完成信号：下单按钮文字「Placing buy order」＝签名/提交进行中，会一直持续到 MetaMask 签完。
+    // （份额输入是点击即清空的乐观重置，会在签名前就清，不能用作完成信号——实测踩过这个坑。）
+    // 等到先见 Placing、再退出 Placing ＝ 本笔已签/已提交，才放行下一笔。
+    // ponytail: 靠按钮文案，页面改版需重核；签名被拒同样会退出 Placing，按已完成处理（移到下一笔）。
     async function waitForFill(timeoutMs) {
       const start = Date.now();
-      let sawValue = false;
+      const isPlacing = () => {
+        const b = document.querySelector(PB_SELECTORS.placeOrderBtn);
+        return !!b && b.textContent.toLowerCase().includes('placing');
+      };
+      let sawPlacing = false;
       while (Date.now() - start < timeoutMs) {
         if (_abort) return 'abort';
-        const el = document.querySelector(PB_SELECTORS.sharesInput);
-        const v = el ? el.value : '';
-        if (v && v !== '0') sawValue = true;
-        else if (sawValue) return 'filled';
-        await sleep(500);
+        if (isPlacing()) sawPlacing = true;
+        else if (sawPlacing) return 'filled';
+        await sleep(300);
       }
       return 'timeout';
     }
@@ -279,9 +344,8 @@
       panel.querySelector('#pb-confirm').onclick = () => { _running = true; submitBatch(legs).finally(() => { _running = false; }); };
     }
 
-    // 实验版（按用户思路）：连续挂单，不逐笔等待。挂完一笔（发起 MetaMask 签名）即留短间隔挂下一笔。
-    // 前提（必须真实页面验证）：点 place buy order 后该笔订单已锁定、交给 MetaMask 签名队列，
-    // 切换右侧组件到下一个 bin 不会冲掉它。若验证不成立，回退到 waitForFill 逐笔等待版。
+    // 逐笔编排：确认 → 对每个勾选 bin 跑 submitLeg（弹 MetaMask）→ waitForFill 等签完 → 下一笔。
+    // 任一步失败/超时都暂停让用户选（跳过/继续/中止），绝不盲目连发下一笔。
     async function submitBatch(legs) {
       _abort = false;
       let placed = 0, skipped = 0;
@@ -289,15 +353,19 @@
         if (_abort) break;
         const n = legs.length;
         const showAbort = `<button id="pb-abort" class="pb-ghost">${t('abortBtn')}</button>`;
-        overlay(`<div class="pb-ov-prog">${t('legProgress')} ${i + 1}/${n} · ${t('placing')}</div>${showAbort}`);
+        overlay(`<div class="pb-ov-title">${t('legProgress')} ${i + 1}/${n} · ${t('placing')}</div>
+                 <div class="pb-ov-actions">${showAbort}</div>`);
         panel.querySelector('#pb-abort').onclick = () => { _abort = true; };
         try {
           await submitLeg(legs[i]); // 点 bin→填价填量→place buy order，发起 MetaMask 签名
           placed++;
         } catch (e) {
-          overlay(`<div class="pb-ov-prog pb-warn">${t('legProgress')} ${i + 1}/${n} · ${String(e.message)}</div>
-                   <button id="pb-skip" class="pb-ghost">${t('skipBtn')}</button>
-                   <button id="pb-abort" class="pb-ghost">${t('abortBtn')}</button>`);
+          console.error('[PB] submitLeg 失败 leg', i + 1, e);
+          overlay(`<div class="pb-ov-title pb-warn">${t('legProgress')} ${i + 1}/${n} · ${String(e.message)}</div>
+                   <div class="pb-ov-actions">
+                     <button id="pb-skip" class="pb-ghost">${t('skipBtn')}</button>
+                     <button id="pb-abort" class="pb-ghost">${t('abortBtn')}</button>
+                   </div>`);
           const act = await new Promise(res => {
             panel.querySelector('#pb-skip').onclick = () => res('skip');
             panel.querySelector('#pb-abort').onclick = () => res('abort');
@@ -305,12 +373,32 @@
           if (act === 'abort') { _abort = true; break; }
           skipped++; continue;
         }
-        // 不等成交/签名，仅留间隔让签名请求发出后再挂下一笔；中止在间隔后的循环顶部生效
-        if (i < legs.length - 1) await sleep(SUBMIT_GAP);
+        // 逐笔等待：本笔已弹 MetaMask，必须等用户签完（下单表单复位＝份额被清空）再下一笔，
+        // 否则下一笔的点击会被正打开的 MetaMask 挡掉而丢失（实验版连续下单就是这个 bug）。
+        if (i < legs.length - 1) {
+          overlay(`<div class="pb-ov-title">${t('legProgress')} ${i + 1}/${n} · ${t('awaitingSign')}</div>
+                   <div class="pb-ov-actions">${showAbort}</div>`);
+          panel.querySelector('#pb-abort').onclick = () => { _abort = true; };
+          const r = await waitForFill(ORDER_TIMEOUT);
+          if (r === 'abort') { _abort = true; break; }
+          if (r === 'timeout') {
+            // 没检测到本笔完成 → 暂停让用户决定，绝不盲目连发下一笔（设计 §4.3）
+            overlay(`<div class="pb-ov-title pb-warn">${t('legProgress')} ${i + 1}/${n} · ${t('timeoutMsg')}</div>
+                     <div class="pb-ov-actions">
+                       <button id="pb-cont" class="pb-submit">${t('contBtn')}</button>
+                       <button id="pb-abort" class="pb-ghost">${t('abortBtn')}</button>
+                     </div>`);
+            const act = await new Promise(res => {
+              panel.querySelector('#pb-cont').onclick = () => res('cont');
+              panel.querySelector('#pb-abort').onclick = () => res('abort');
+            });
+            if (act === 'abort') { _abort = true; break; }
+          }
+        }
       }
       const tail = `${placed} ${t('placedAll')}${skipped ? ' · ' + skipped + ' ' + t('skipBtn') : ''}${_abort ? ' · ' + t('aborted') : ''}`;
-      overlay(`<div class="pb-ov-prog">${tail}</div>
-               <button id="pb-close" class="pb-ghost">OK</button>`);
+      overlay(`<div class="pb-ov-title">${tail}</div>
+               <div class="pb-ov-actions"><button id="pb-close" class="pb-ghost">OK</button></div>`);
       panel.querySelector('#pb-close').onclick = clearOverlay;
     }
 
