@@ -1,5 +1,7 @@
 # PolyBatch
 
+**English** · [中文](README.zh-CN.md)
+
 **One-click batch buying across multiple Polymarket options.** Pick several bins in a market, set direction (YES/NO) and share size, see the combined cost live, and place all the orders in one flow — instead of clicking through each one by hand.
 
 > ⚠️ **Unofficial.** PolyBatch is an independent, community-built tool. It is **not affiliated with, endorsed by, or connected to Polymarket** in any way.
