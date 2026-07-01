@@ -1,3 +1,8 @@
 .DS_Store
 node_modules/
 *.log
+
+# internal design/progress docs — not for public repo
+docs/
+.superpowers/
+.claude/
