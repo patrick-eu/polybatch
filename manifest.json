@@ -3,6 +3,12 @@
   "name": "PolyBatch",
   "version": "0.1.0",
   "description": "One-click batch buy across multiple Polymarket bins: pick bins, set direction and share size, see combined cost live.",
+  "icons": { "16": "icon16.png", "48": "icon48.png", "128": "icon128.png" },
+  "action": {
+    "default_title": "PolyBatch — 点击召唤/收起面板",
+    "default_icon": { "16": "icon16.png", "48": "icon48.png", "128": "icon128.png" }
+  },
+  "background": { "service_worker": "bg.js" },
   "content_scripts": [
     {
       "matches": ["https://polymarket.com/*"],
@@ -14,5 +20,8 @@
   "host_permissions": [
     "https://gamma-api.polymarket.com/*",
     "https://clob.polymarket.com/*"
+  ],
+  "web_accessible_resources": [
+    { "resources": ["donate.html"], "matches": ["https://polymarket.com/*"] }
   ]
 }

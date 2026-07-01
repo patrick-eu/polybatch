@@ -51,6 +51,13 @@
 }
 #polybatch-panel .pb-brand { font-size: 13px; font-weight: 600; letter-spacing: -.01em; color: var(--pb-dim); }
 #polybatch-panel .pb-brand b { color: var(--pb-text); font-weight: 700; }
+#polybatch-panel .pb-head-r { display: inline-flex; align-items: center; gap: 8px; }
+#polybatch-panel .pb-x {
+  width: 22px; height: 22px; padding: 0; border: none; border-radius: 6px;
+  background: transparent; color: var(--pb-dim); font-size: 18px; line-height: 1;
+  cursor: pointer; transition: background .12s, color .12s;
+}
+#polybatch-panel .pb-x:hover { background: var(--pb-surface); color: var(--pb-text); }
 
 /* segmented control */
 #polybatch-panel .pb-seg {
@@ -172,3 +179,12 @@
 #polybatch-panel .pb-ghost { flex:1; padding:8px; border:1px solid var(--pb-line); border-radius:8px; background:var(--pb-surface); color:var(--pb-text); font-family:var(--pb-sans); font-size:12px; cursor:pointer; }
 #polybatch-panel .pb-ghost:hover { background:var(--pb-surface-2); }
 #polybatch-panel .pb-ov-note { font-size:10px; color:var(--pb-dim); line-height:1.4; }
+
+/* donation 底栏：一行链接 */
+#polybatch-panel .pb-donate-foot { padding: 9px 14px 12px; border-top: 1px solid var(--pb-line); text-align: center; }
+#polybatch-panel .pb-donate-link {
+  border: none; background: transparent; cursor: pointer;
+  color: var(--pb-dim); font-family: var(--pb-sans); font-size: 11px; letter-spacing: .01em; transition: color .12s;
+}
+#polybatch-panel .pb-donate-link:hover { color: var(--pb-text); }
+#polybatch-panel .pb-heart { color: var(--pb-loss); }

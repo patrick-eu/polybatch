@@ -1,6 +1,6 @@
 // cost.test.js
 const assert = require('assert');
-const { calcLegCost, summarize, bestAskCents } = require('./cost.js');
+const { calcLegCost, summarize, worstFillCents } = require('./cost.js');
 
 // asks 故意降序输入（模拟真实 API），价 0.30/100 + 0.28/50
 const book = { asks: [{price:'0.30', size:'100'}, {price:'0.28', size:'50'}], bids: [] };
@@ -31,11 +31,16 @@ const s2 = summarize([0.5, 0.6], 100);
 assert.ok(Math.abs(s2.combined - 1.1) < 1e-9, `combined2=${s2.combined}`);
 assert.strictEqual(s2.profitable, false);
 
-// bestAskCents：卖一价（asks 最低价）→ 美分，保留 0.1¢
-assert.strictEqual(bestAskCents({ asks:[{price:'0.999',size:'10'}] }), 99.9);
-assert.strictEqual(bestAskCents({ asks:[{price:'0.50'},{price:'0.48'},{price:'0.52'}] }), 48); // 取最低
-assert.strictEqual(bestAskCents({ asks:[{price:'0.02',size:'5'}] }), 2);
-assert.strictEqual(bestAskCents({ asks:[] }), null);
-assert.strictEqual(bestAskCents(null), null);
+// worstFillCents：吃完 shares 深度所需的最高卖档价 → 美分，向上取整到 0.1¢
+// 簿：0.48/50, 0.50/50, 0.52/100（乱序输入）
+const wbook = { asks:[{price:'0.50',size:'50'},{price:'0.48',size:'50'},{price:'0.52',size:'100'}] };
+assert.strictEqual(worstFillCents(wbook, 30), 48);   // 一档内 → 最低档
+assert.strictEqual(worstFillCents(wbook, 50), 48);   // 正好吃完首档 → 仍是首档价
+assert.strictEqual(worstFillCents(wbook, 80), 50);   // 跨到二档 → 50¢
+assert.strictEqual(worstFillCents(wbook, 120), 52);  // 跨到三档 → 52¢
+assert.strictEqual(worstFillCents(wbook, 999), 52);  // 深度不足 → 最高可得档
+assert.strictEqual(worstFillCents({ asks:[{price:'0.465',size:'10'}] }, 5), 46.5); // 向上取整到 0.1¢
+assert.strictEqual(worstFillCents({ asks:[] }, 10), null);
+assert.strictEqual(worstFillCents(null, 10), null);
 
 console.log('cost.test.js PASS');

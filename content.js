@@ -10,8 +10,9 @@
           legProgress:'Leg', awaitingSign:'Sign in your wallet…', switching:'Switching…',
           filledMsg:'submitted', timeoutMsg:'not confirmed — continue / skip / abort',
           contBtn:'Continue', skipBtn:'Skip', allDone:'All legs submitted',
-          aborted:'aborted', limitNote:'Limit @ best ask — size beyond the top ask may not fill',
-          placing:'Placing…', placedAll:'orders submitted' },
+          aborted:'aborted', limitNote:'Limit set to fill your size through the book — beyond total depth may not fill',
+          placing:'Placing…', placedAll:'orders submitted', close:'Close',
+          support:'Free to use · Support development' },
     zh: { market:'市场', dir:'方向', buyPerBin:'每个选项买', shares:'份额',
           loading:'加载中…', noBins:'未识别到可批量的选项', place:'下单',
           depth:'无深度', loadFail:'加载失败', spend:'总花费',
@@ -20,8 +21,9 @@
           legProgress:'第', awaitingSign:'请在钱包中签名…', switching:'切换中…',
           filledMsg:'已提交', timeoutMsg:'未确认成交 — 继续 / 跳过 / 中止',
           contBtn:'继续', skipBtn:'跳过', allDone:'全部已提交',
-          aborted:'已中止', limitNote:'限价挂卖一价，超出卖一档的份额可能不会成交',
-          placing:'挂单中…', placedAll:'笔已提交' },
+          aborted:'已中止', limitNote:'限价按所填份额吃穿盘口挂档，超出总深度的部分可能不成交',
+          placing:'挂单中…', placedAll:'笔已提交', close:'关闭',
+          support:'免费使用 · 支持开发' },
   };
   let lang = localStorage.getItem('pb_lang') || (navigator.language.startsWith('zh') ? 'zh' : 'en');
   const t = (k) => (STRINGS[lang] && STRINGS[lang][k]) || k;
@@ -57,8 +59,11 @@
     panel.innerHTML = `
       <div class="pb-head">
         <span class="pb-brand">Poly<b>Batch</b></span>
-        <span class="pb-seg pb-lang">
-          <button data-lang="en"${lang === 'en' ? ' class="active"' : ''}>EN</button><button data-lang="zh"${lang === 'zh' ? ' class="active"' : ''}>中</button>
+        <span class="pb-head-r">
+          <span class="pb-seg pb-lang">
+            <button data-lang="en"${lang === 'en' ? ' class="active"' : ''}>EN</button><button data-lang="zh"${lang === 'zh' ? ' class="active"' : ''}>中</button>
+          </span>
+          <button class="pb-x" id="pb-x" title="${t('close')}">×</button>
         </span>
       </div>
       <div class="pb-slug"><span class="pb-slug-label">${t('market')}</span> <span class="pb-slug-val">${slug}</span></div>
@@ -71,6 +76,9 @@
         <div id="pb-bins" class="pb-bins">${t('loading')}</div>
         <div class="pb-verdict" id="pb-total"></div>
         <button class="pb-submit" id="pb-submit">${t('place')}</button>
+      </div>
+      <div class="pb-donate-foot">
+        <button class="pb-donate-link" id="pb-donate-link">${t('support')} <span class="pb-heart">♥</span></button>
       </div>`;
     document.body.appendChild(panel);
 
@@ -92,6 +100,11 @@
     });
 
     panel.querySelector('#pb-submit').addEventListener('click', onSubmit);
+    panel.querySelector('#pb-x').addEventListener('click', () => { panel.style.display = 'none'; });
+
+    panel.querySelector('#pb-donate-link').addEventListener('click', () => {
+      window.open(chrome.runtime.getURL('donate.html'), '_blank', 'noopener');
+    });
 
     fetchEventBins(slug).then(bins => { state.bins = bins; renderBins(); })
       .catch(() => { panel.querySelector('#pb-bins').textContent = t('noBins'); });
@@ -258,9 +271,9 @@
       dirBtn.click();
       await sleep(500); // 等右侧组件加载该 bin
 
-      // 2. 卖一价（美分）→ Limit price（轮询后仍无可能是组件落在 Market 模式，无限价框）
+      // 2. 限价（美分）→ Limit price：挂到「吃完所填股数深度的最高卖档」，否则超一档深度时剩余不成交
       const book = await bookFor(leg.bin);
-      const cents = bestAskCents(book);
+      const cents = worstFillCents(book, leg.shares);
       if (cents == null) throw new Error('ask');
       const priceInput = await waitEl(PB_SELECTORS.limitPriceInput);
       if (!priceInput) throw new Error('price');
@@ -415,7 +428,19 @@
       panel.querySelector('#pb-close').onclick = clearOverlay;
     }
 
-    return { slug, destroy: () => panel.remove() };
+    return {
+      slug,
+      destroy: () => panel.remove(),
+      // 工具栏图标点一下：隐了就召唤、显着就收起
+      toggle: () => { panel.style.display = panel.style.display === 'none' ? '' : 'none'; },
+    };
+  }
+
+  // 后台 service worker 在点击工具栏图标时发来的消息 → 召唤/收起面板
+  if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
+    chrome.runtime.onMessage.addListener((msg) => {
+      if (msg && msg.type === 'pb-toggle' && active) active.toggle();
+    });
   }
 
   // SPA 路由：content script 跑在 isolated world，页面自身的 history.pushState 不经过我们的包装，
