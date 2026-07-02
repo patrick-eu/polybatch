@@ -10,8 +10,10 @@
           legProgress:'Leg', awaitingSign:'Sign in your wallet…', switching:'Switching…',
           filledMsg:'submitted', timeoutMsg:'not confirmed — continue / skip / abort',
           contBtn:'Continue', skipBtn:'Skip', allDone:'All legs submitted',
-          aborted:'aborted', limitNote:'Limit @ best ask — size beyond the top ask may not fill',
-          placing:'Placing…', placedAll:'orders submitted' },
+          aborted:'aborted', limitNote:'Limit set to fill your size through the book — beyond total depth may not fill',
+          placing:'Placing…', placedAll:'orders submitted', close:'Close',
+          support:'Free to use · Support development',
+          nonEnWarn:'Non-English Polymarket UI detected — fills can’t be auto-confirmed, each leg will pause after the timeout for you to confirm. Switch Polymarket to English for a smooth flow.' },
     zh: { market:'市场', dir:'方向', buyPerBin:'每个选项买', shares:'份额',
           loading:'加载中…', noBins:'未识别到可批量的选项', place:'下单',
           depth:'无深度', loadFail:'加载失败', spend:'总花费',
@@ -20,8 +22,10 @@
           legProgress:'第', awaitingSign:'请在钱包中签名…', switching:'切换中…',
           filledMsg:'已提交', timeoutMsg:'未确认成交 — 继续 / 跳过 / 中止',
           contBtn:'继续', skipBtn:'跳过', allDone:'全部已提交',
-          aborted:'已中止', limitNote:'限价挂卖一价，超出卖一档的份额可能不会成交',
-          placing:'挂单中…', placedAll:'笔已提交' },
+          aborted:'已中止', limitNote:'限价按所填份额吃穿盘口挂档，超出总深度的部分可能不成交',
+          placing:'挂单中…', placedAll:'笔已提交', close:'关闭',
+          support:'免费使用 · 支持开发',
+          nonEnWarn:'检测到 Polymarket 非英文界面——无法自动确认成交，每笔将在超时后暂停等你手动确认。建议把 Polymarket 切到英文界面。' },
   };
   let lang = localStorage.getItem('pb_lang') || (navigator.language.startsWith('zh') ? 'zh' : 'en');
   const t = (k) => (STRINGS[lang] && STRINGS[lang][k]) || k;
@@ -31,6 +35,12 @@
   function getEventSlug() {
     // 解析逻辑在 clob.js 的 eventSlugFromPath（纯函数、有测试覆盖），兼容非英文语言前缀
     return eventSlugFromPath(location.pathname);
+  }
+
+  // 成交 toast 只有英文文案能匹配（armFillWatcher）；英文页无语言前缀（/event/... 或 /en/...）
+  function pageIsEnglish() {
+    const seg = location.pathname.split('/').filter(Boolean)[0];
+    return seg === 'event' || seg === 'en';
   }
 
   function onRouteChange() {
@@ -57,11 +67,14 @@
     panel.innerHTML = `
       <div class="pb-head">
         <span class="pb-brand">Poly<b>Batch</b></span>
-        <span class="pb-seg pb-lang">
-          <button data-lang="en"${lang === 'en' ? ' class="active"' : ''}>EN</button><button data-lang="zh"${lang === 'zh' ? ' class="active"' : ''}>中</button>
+        <span class="pb-head-r">
+          <span class="pb-seg pb-lang">
+            <button data-lang="en"${lang === 'en' ? ' class="active"' : ''}>EN</button><button data-lang="zh"${lang === 'zh' ? ' class="active"' : ''}>中</button>
+          </span>
+          <button class="pb-x" id="pb-x" title="${t('close')}">×</button>
         </span>
       </div>
-      <div class="pb-slug"><span class="pb-slug-label">${t('market')}</span> <span class="pb-slug-val">${slug}</span></div>
+      <div class="pb-slug"><span class="pb-slug-label">${t('market')}</span> <span class="pb-slug-val"></span></div>
       <div class="pb-body">
         <div class="pb-seg pb-dir">
           <button data-dir="YES" class="active">YES</button><button data-dir="NO">NO</button>
@@ -71,8 +84,12 @@
         <div id="pb-bins" class="pb-bins">${t('loading')}</div>
         <div class="pb-verdict" id="pb-total"></div>
         <button class="pb-submit" id="pb-submit">${t('place')}</button>
+      </div>
+      <div class="pb-donate-foot">
+        <button class="pb-donate-link" id="pb-donate-link">${t('support')} <span class="pb-heart">♥</span></button>
       </div>`;
     document.body.appendChild(panel);
+    panel.querySelector('.pb-slug-val').textContent = slug; // URL 数据不进 innerHTML
 
     panel.querySelectorAll('.pb-lang button').forEach(b =>
       b.addEventListener('click', () => setLang(b.dataset.lang)));
@@ -88,10 +105,16 @@
     let debounce;
     sharesInput.addEventListener('input', () => {
       clearTimeout(debounce);
-      debounce = setTimeout(() => { state.shares = Number(sharesInput.value) || 0; recompute(); }, 300);
+      // 资金路径校验：0/负数/非数 → 0（recompute 按未选处理，collectLegs 收不到腿，不会带进下单）
+      debounce = setTimeout(() => { const v = Number(sharesInput.value); state.shares = v >= 1 ? v : 0; recompute(); }, 300);
     });
 
     panel.querySelector('#pb-submit').addEventListener('click', onSubmit);
+    panel.querySelector('#pb-x').addEventListener('click', () => { panel.style.display = 'none'; });
+
+    panel.querySelector('#pb-donate-link').addEventListener('click', () => {
+      window.open(chrome.runtime.getURL('donate.html'), '_blank', 'noopener');
+    });
 
     fetchEventBins(slug).then(bins => { state.bins = bins; renderBins(); })
       .catch(() => { panel.querySelector('#pb-bins').textContent = t('noBins'); });
@@ -105,8 +128,9 @@
         row.className = 'pb-leg-row';
         row.style.setProperty('--i', i); // 级联进入动画的索引
         row.innerHTML = `<input type="checkbox" data-i="${i}">
-          <span class="pb-leg-title">${bin.title}</span>
+          <span class="pb-leg-title"></span>
           <span class="pb-leg-cost" data-i="${i}">·</span>`;
+        row.querySelector('.pb-leg-title').textContent = bin.title; // API 数据不进 innerHTML
         row.querySelector('input').addEventListener('change', e => {
           row.classList.toggle('on', e.target.checked);
           if (e.target.checked) state.checked.add(i); else state.checked.delete(i);
@@ -131,14 +155,16 @@
       const gen = ++_gen;
       const avgPrices = [];
       let ok = true, totalShares = 0;
+      const jobs = []; // 各腿盘口并行拉取（bookFor 自带 30s 缓存），不再逐腿串行等网络
       for (let i = 0; i < state.bins.length; i++) {
         const cell = panel.querySelector(`.pb-leg-cost[data-i="${i}"]`);
         if (!cell) continue;
-        if (!state.checked.has(i)) { cell.textContent = '·'; cell.className = 'pb-leg-cost'; continue; }
-        let book;
-        try { book = await bookFor(state.bins[i]); }
-        catch { if (gen !== _gen) return; cell.textContent = t('loadFail'); cell.className = 'pb-leg-cost warn'; ok = false; continue; }
+        if (!state.checked.has(i) || state.shares < 1) { cell.textContent = '·'; cell.className = 'pb-leg-cost'; continue; }
+        jobs.push(bookFor(state.bins[i]).then(book => ({ cell, book }), () => ({ cell, err: true })));
+      }
+      for (const { cell, book, err } of await Promise.all(jobs)) {
         if (gen !== _gen) return;
+        if (err) { cell.textContent = t('loadFail'); cell.className = 'pb-leg-cost warn'; ok = false; continue; }
         const r = calcLegCost(book, state.shares);
         if (!r.enough) { cell.textContent = t('depth'); cell.className = 'pb-leg-cost warn'; ok = false; continue; }
         cell.textContent = `$${r.avgPrice.toFixed(3)}`;
@@ -258,9 +284,9 @@
       dirBtn.click();
       await sleep(500); // 等右侧组件加载该 bin
 
-      // 2. 卖一价（美分）→ Limit price（轮询后仍无可能是组件落在 Market 模式，无限价框）
+      // 2. 限价（美分）→ Limit price：挂到「吃完所填股数深度的最高卖档」，否则超一档深度时剩余不成交
       const book = await bookFor(leg.bin);
-      const cents = bestAskCents(book);
+      const cents = worstFillCents(book, leg.shares);
       if (cents == null) throw new Error('ask');
       const priceInput = await waitEl(PB_SELECTORS.limitPriceInput);
       if (!priceInput) throw new Error('price');
@@ -348,12 +374,19 @@
       overlay(
         `<div class="pb-ov-title">${t('confirmTitle')}</div>
          <div class="pb-ov-sum">${plan.count} ${t('legs')} · ${state.dir} · $${plan.totalSpend.toFixed(2)}</div>
-         <div class="pb-ov-list">${plan.items.map(it => `<div>${it.title} · ${it.shares}</div>`).join('')}</div>
+         <div class="pb-ov-list"></div>
          <div class="pb-ov-note">${t('limitNote')}</div>
+         ${pageIsEnglish() ? '' : `<div class="pb-ov-note pb-warn">${t('nonEnWarn')}</div>`}
          <div class="pb-ov-actions">
            <button id="pb-confirm" class="pb-submit">${t('confirmBtn')}</button>
            <button id="pb-cancel" class="pb-ghost">${t('cancelBtn')}</button>
          </div>`);
+      const list = panel.querySelector('.pb-ov-list'); // 标题是 API 数据，不进 innerHTML
+      plan.items.forEach(it => {
+        const d = document.createElement('div');
+        d.textContent = `${it.title} · ${it.shares}`;
+        list.appendChild(d);
+      });
       panel.querySelector('#pb-cancel').onclick = clearOverlay;
       panel.querySelector('#pb-confirm').onclick = () => { _running = true; submitBatch(legs).finally(() => { _running = false; }); };
     }
@@ -415,7 +448,21 @@
       panel.querySelector('#pb-close').onclick = clearOverlay;
     }
 
-    return { slug, destroy: () => panel.remove() };
+    return {
+      slug,
+      // 资金安全：销毁（切路由/切语言）必须中止进行中的批量下单，
+      // 否则循环会在没有任何可见 UI 的情况下继续点页面按钮下单
+      destroy: () => { _abort = true; panel.remove(); },
+      // 工具栏图标点一下：隐了就召唤、显着就收起
+      toggle: () => { panel.style.display = panel.style.display === 'none' ? '' : 'none'; },
+    };
+  }
+
+  // 后台 service worker 在点击工具栏图标时发来的消息 → 召唤/收起面板
+  if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
+    chrome.runtime.onMessage.addListener((msg) => {
+      if (msg && msg.type === 'pb-toggle' && active) active.toggle();
+    });
   }
 
   // SPA 路由：content script 跑在 isolated world，页面自身的 history.pushState 不经过我们的包装，

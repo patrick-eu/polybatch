@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Support PolyBatch</title>
+<style>
+  :root {
+    --bg: #0b0e14; --surface: rgba(255,255,255,.04); --surface-2: rgba(255,255,255,.07);
+    --line: rgba(255,255,255,.09); --text: #e8ebf1; --dim: #737e92;
+    --accent: #5e8ad4; --accent-b: #7aa3e8; --heart: #f76b7e; --ok: #3fcf8a;
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
+    --sans: -apple-system, "Segoe UI", Inter, system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; background:
+      radial-gradient(1400px 800px at 50% -10%, rgba(94,138,212,.20), transparent 60%), var(--bg);
+    color: var(--text); font-family: var(--sans);
+    display: flex; align-items: center; justify-content: center; padding: 48px 24px;
+  }
+  .card {
+    width: 100%; max-width: 760px; background: rgba(13,16,22,.72); backdrop-filter: blur(18px);
+    border: 1px solid var(--line); border-radius: 26px; padding: 56px 56px 48px; text-align: center;
+    box-shadow: 0 32px 80px rgba(0,0,0,.55);
+  }
+  .brand { font-size: 20px; font-weight: 600; color: var(--dim); letter-spacing: -.01em; }
+  .brand b { color: var(--text); font-weight: 700; }
+  h1 { margin: 24px 0 16px; font-size: 40px; font-weight: 700; letter-spacing: -.025em; }
+  h1 .heart { color: var(--heart); }
+  .tagline { margin: 0 auto; max-width: 560px; font-size: 19px; line-height: 1.55; color: var(--dim); }
+  .addrs { margin-top: 44px; display: flex; flex-direction: column; gap: 22px; }
+  .addr {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 26px 26px;
+    display: flex; align-items: center; gap: 28px; text-align: left;
+  }
+  .qr { flex: 0 0 auto; width: 148px; height: 148px; border-radius: 14px; background: #fff; padding: 9px; }
+  .qr img { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+  .addr-info { flex: 1 1 auto; min-width: 0; }
+  .addr-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .dot { width: 11px; height: 11px; border-radius: 50%; }
+  .dot.polygon { background: #8247e5; }
+  .dot.tron { background: #ef0027; }
+  .addr-chain { font-size: 19px; font-weight: 700; }
+  .addr-net { font-size: 14px; color: var(--dim); }
+  .addr-val {
+    display: block; font-family: var(--mono); font-size: 15px; color: var(--text);
+    background: rgba(0,0,0,.28); border-radius: 10px; padding: 13px 14px; margin-bottom: 14px;
+    overflow-x: auto; white-space: nowrap; scrollbar-width: none;
+  }
+  .addr-val::-webkit-scrollbar { display: none; }
+  .copy {
+    padding: 12px 22px; border: 1px solid var(--line); border-radius: 10px;
+    background: var(--surface-2); color: var(--text); font-family: var(--sans); font-size: 15px;
+    font-weight: 600; cursor: pointer; transition: background .12s, color .12s, border-color .12s;
+  }
+  .copy:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .copy.done { background: var(--ok); border-color: var(--ok); color: #08110c; }
+  .foot { margin-top: 36px; font-size: 14px; line-height: 1.5; color: var(--dim); }
+</style>
+</head>
+<body>
+  <main class="card">
+    <div class="brand">Poly<b>Batch</b></div>
+    <h1>Support development <span class="heart">♥</span></h1>
+    <p class="tagline">Help us keep building awesome features and keep this extension free!</p>
+
+    <div class="addrs">
+      <div class="addr">
+        <div class="qr"><img src="qr-polygon.png" alt="Polygon donation QR"></div>
+        <div class="addr-info">
+          <div class="addr-head"><span class="dot polygon"></span>
+            <span class="addr-chain">Polygon</span><span class="addr-net">EVM · USDC / USDT / POL</span></div>
+          <code class="addr-val">0xFe4446C8f8BfDEACe3696B0D84FD8e271fd61Eb9</code>
+          <button class="copy" data-addr="0xFe4446C8f8BfDEACe3696B0D84FD8e271fd61Eb9">Copy address</button>
+        </div>
+      </div>
+      <div class="addr">
+        <div class="qr"><img src="qr-tron.png" alt="TRON donation QR"></div>
+        <div class="addr-info">
+          <div class="addr-head"><span class="dot tron"></span>
+            <span class="addr-chain">TRON</span><span class="addr-net">TRC20 · USDT</span></div>
+          <code class="addr-val">TLxkofLRboA279JwkY9H5jXWWeUPeNeagS</code>
+          <button class="copy" data-addr="TLxkofLRboA279JwkY9H5jXWWeUPeNeagS">Copy address</button>
+        </div>
+      </div>
+    </div>
+
+    <p class="foot">Send only on the matching network. Thank you 🙏</p>
+  </main>
+  <script src="donate.js"></script>
+</body>
+</html>

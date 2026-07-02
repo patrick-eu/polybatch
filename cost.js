@@ -26,13 +26,22 @@ function summarize(avgPrices, shares) {
   return { combined, totalSpend: combined * shares, profitable: combined < 1 };
 }
 
-// 卖一价（asks 最低价，美元）→ 美分，保留 0.1¢；无卖单返回 null
-function bestAskCents(book) {
-  const asks = (book && book.asks) || [];
-  let lowest = Infinity;
-  for (const a of asks) { const p = Number(a.price); if (p > 0 && p < lowest) lowest = p; }
-  if (!Number.isFinite(lowest)) return null;
-  return Math.round(lowest * 1000) / 10; // 0.999 → 99.9
+// 吃到 shares 深度所需的「最差（最高）卖档价」→ 美分，向上取整到 0.1¢；无卖单返回 null。
+// 限价买单会成交所有 ≤ 限价的卖档，故限价须挂到能覆盖所填深度的那一档，否则只吃到最低档、剩余不成交。
+// 深度不足时挂最高可得卖档（尽量多成交）。向上取整确保限价 ≥ 该档实际价（否则差 0.0x¢ 会吃不到）。
+function worstFillCents(book, shares) {
+  const asks = ((book && book.asks) || [])
+    .map(a => ({ price: Number(a.price), size: Number(a.size) }))
+    .filter(a => a.price > 0 && a.size > 0)
+    .sort((a, b) => a.price - b.price); // 升序，从最低价吃
+  if (!asks.length) return null;
+  let remaining = shares, worst = 0;
+  for (const lvl of asks) {
+    worst = lvl.price;
+    remaining -= lvl.size;
+    if (remaining <= 1e-9) break;
+  }
+  return Math.ceil(worst * 1000) / 10; // 0.465 → 46.5
 }
 
-if (typeof module !== 'undefined') module.exports = { calcLegCost, summarize, bestAskCents };
+if (typeof module !== 'undefined') module.exports = { calcLegCost, summarize, worstFillCents };
