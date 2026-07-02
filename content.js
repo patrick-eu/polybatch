@@ -12,8 +12,7 @@
           contBtn:'Continue', skipBtn:'Skip', allDone:'All legs submitted',
           aborted:'aborted', limitNote:'Limit set to fill your size through the book — beyond total depth may not fill',
           placing:'Placing…', placedAll:'orders submitted', close:'Close',
-          support:'Free to use · Support development',
-          nonEnWarn:'Non-English Polymarket UI detected — fills can’t be auto-confirmed, each leg will pause after the timeout for you to confirm. Switch Polymarket to English for a smooth flow.' },
+          support:'Free to use · Support development' },
     zh: { market:'市场', dir:'方向', buyPerBin:'每个选项买', shares:'份额',
           loading:'加载中…', noBins:'未识别到可批量的选项', place:'下单',
           depth:'无深度', loadFail:'加载失败', spend:'总花费',
@@ -24,8 +23,7 @@
           contBtn:'继续', skipBtn:'跳过', allDone:'全部已提交',
           aborted:'已中止', limitNote:'限价按所填份额吃穿盘口挂档，超出总深度的部分可能不成交',
           placing:'挂单中…', placedAll:'笔已提交', close:'关闭',
-          support:'免费使用 · 支持开发',
-          nonEnWarn:'检测到 Polymarket 非英文界面——无法自动确认成交，每笔将在超时后暂停等你手动确认。建议把 Polymarket 切到英文界面。' },
+          support:'免费使用 · 支持开发' },
   };
   let lang = localStorage.getItem('pb_lang') || (navigator.language.startsWith('zh') ? 'zh' : 'en');
   const t = (k) => (STRINGS[lang] && STRINGS[lang][k]) || k;
@@ -35,12 +33,6 @@
   function getEventSlug() {
     // 解析逻辑在 clob.js 的 eventSlugFromPath（纯函数、有测试覆盖），兼容非英文语言前缀
     return eventSlugFromPath(location.pathname);
-  }
-
-  // 成交 toast 只有英文文案能匹配（armFillWatcher）；英文页无语言前缀（/event/... 或 /en/...）
-  function pageIsEnglish() {
-    const seg = location.pathname.split('/').filter(Boolean)[0];
-    return seg === 'event' || seg === 'en';
   }
 
   function onRouteChange() {
@@ -325,7 +317,11 @@
     // 完成信号：下单成功后 Polymarket 弹出的 toast（<li> 文本含「Buy Yes/No placed」）。
     // 这是与签名方式无关的真信号——MetaMask（弹窗签名、数秒）和 Magic（无签名、瞬时）都只在订单真正成交时才弹。
     // 必须在点击下单「之前」就 arm 监听：Magic 的 toast 一闪而过，轮询/晚装会漏（之前用按钮 Placing 状态就栽在这）。
-    // ponytail: 匹配英文 toast 文案，页面/语言改版需重核；捕获不到则超时暂停由用户决定（安全降级）。
+    // 该 toast 文案在所有语言界面下都是硬编码英文（2026-07-02 从前端 bundle 查证：
+    // generateToastTitleFromOrderCreation 是纯模板 `${Side} ${Outcome} placed`，不走 i18n；
+    // /zh/ 等页面加载的 chunk 与英文页完全相同），故本匹配对全部语言前缀有效。
+    // 正则须保持「buy+结果+placed」严格邻接——放宽成 /buy.*placed/ 会误匹配
+    // "could not be placed" 之类的失败 toast。页面改版需重核；捕获不到则超时暂停由用户决定（安全降级）。
     function armFillWatcher(timeoutMs) {
       const isPlaced = (n) => n && n.nodeType === 1 && /buy (yes|no) placed/i.test(n.textContent || '');
       return new Promise((resolve) => {
@@ -376,7 +372,6 @@
          <div class="pb-ov-sum">${plan.count} ${t('legs')} · ${state.dir} · $${plan.totalSpend.toFixed(2)}</div>
          <div class="pb-ov-list"></div>
          <div class="pb-ov-note">${t('limitNote')}</div>
-         ${pageIsEnglish() ? '' : `<div class="pb-ov-note pb-warn">${t('nonEnWarn')}</div>`}
          <div class="pb-ov-actions">
            <button id="pb-confirm" class="pb-submit">${t('confirmBtn')}</button>
            <button id="pb-cancel" class="pb-ghost">${t('cancelBtn')}</button>
