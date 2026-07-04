@@ -131,16 +131,52 @@
 
     function tokenFor(bin) { return state.dir === 'YES' ? bin.yesToken : bin.noToken; }
 
-    async function bookFor(bin) {
+    async function bookFor(bin, fresh) {
       const tok = tokenFor(bin);
       const c = bookCache[tok];
-      if (c && (Date.now() - c.ts) < 30000) return c.book;
+      if (!fresh && c && (Date.now() - c.ts) < 30000) return c.book;
       const book = await fetchBook(tok);
       bookCache[tok] = { book, ts: Date.now() };
       return book;
     }
 
-    async function recompute() {
+    // 实时价：CLOB WebSocket market 频道，订单簿一变即推送。订阅集 =「勾选 bin × 当前方向」的 token，
+    // 该频道只在连接时订阅一次，集合变了就重连（连接很轻，勾选是低频动作）。
+    const WSS = 'wss://ws-subscriptions-clob.polymarket.com/ws/market';
+    let ws = null, wsAssets = '', wsPing = null, wsDebounce = null;
+    function syncWS() {
+      const assets = [...state.checked].map(i => tokenFor(state.bins[i])).filter(Boolean).sort();
+      const key = assets.join(',');
+      if (key === wsAssets) return;
+      wsAssets = key;
+      clearInterval(wsPing);
+      if (ws) { ws.onclose = null; ws.close(); ws = null; }
+      if (!assets.length) return;
+      const sock = ws = new WebSocket(WSS);
+      sock.onopen = () => {
+        sock.send(JSON.stringify({ type: 'market', assets_ids: assets }));
+        wsPing = setInterval(() => { if (sock.readyState === 1) sock.send('PING'); }, 10000); // 不 PING 会被服务端断开
+      };
+      sock.onmessage = (e) => {
+        let evs; try { evs = JSON.parse(e.data); } catch { return; } // PONG 等非 JSON 心跳
+        let dirty = false;
+        for (const ev of [].concat(evs)) {
+          if (!ev || !ev.asset_id) continue;
+          // book 快照直接入缓存（与 REST /book 同为 asks:[{price,size}]）；其余事件（price_change 等）标脏待 REST 重取
+          if (ev.event_type === 'book' && ev.asks) bookCache[ev.asset_id] = { book: ev, ts: Date.now() };
+          else delete bookCache[ev.asset_id];
+          dirty = true;
+        }
+        if (!dirty) return;
+        clearTimeout(wsDebounce);
+        wsDebounce = setTimeout(() => { if (!_running) recompute(); }, 250); // 合并连发推送，一次重算
+      };
+      // 掉线：清状态，10s 兜底轮询里的 recompute → syncWS 会自动重连
+      sock.onclose = () => { if (ws === sock) { ws = null; wsAssets = ''; clearInterval(wsPing); } };
+    }
+
+    async function recompute(fresh) {
+      syncWS(); // 勾选/方向一变，这里是唯一汇聚点：顺带对齐 WS 订阅集
       const gen = ++_gen;
       const avgPrices = [];
       let ok = true, totalShares = 0;
@@ -149,7 +185,7 @@
         if (!cell) continue;
         if (!state.checked.has(i)) { cell.textContent = '·'; cell.className = 'pb-leg-cost'; continue; }
         let book;
-        try { book = await bookFor(state.bins[i]); }
+        try { book = await bookFor(state.bins[i], fresh); }
         catch { if (gen !== _gen) return; cell.textContent = t('loadFail'); cell.className = 'pb-leg-cost warn'; ok = false; continue; }
         if (gen !== _gen) return;
         const r = calcLegCost(book, state.shares);
@@ -272,7 +308,8 @@
       await sleep(500); // 等右侧组件加载该 bin
 
       // 2. 限价（美分）→ Limit price：挂到「吃完所填股数深度的最高卖档」，否则超一档深度时剩余不成交
-      const book = await bookFor(leg.bin);
+      //    强制拉最新订单簿：勾选到确认下单之间价格可能已变，用缓存价挂限价会挂偏
+      const book = await bookFor(leg.bin, true);
       const cents = worstFillCents(book, leg.shares);
       if (cents == null) throw new Error('ask');
       const priceInput = await waitEl(PB_SELECTORS.limitPriceInput);
@@ -428,9 +465,19 @@
       panel.querySelector('#pb-close').onclick = clearOverlay;
     }
 
+    // 兜底轮询：仅 WS 未连上（初连失败/掉线）时每 10 秒强拉一次，recompute 内的 syncWS 顺带重连。
+    // 下单流程中（_running）不刷，避免与 submitLeg 的取书/填价互抢。
+    const liveRefresh = setInterval(() => {
+      if (state.checked.size && !_running && !(ws && ws.readyState === 1)) recompute(true);
+    }, 10000);
+
     return {
       slug,
-      destroy: () => panel.remove(),
+      destroy: () => {
+        clearInterval(liveRefresh); clearInterval(wsPing); clearTimeout(wsDebounce);
+        if (ws) { ws.onclose = null; ws.close(); }
+        panel.remove();
+      },
       // 工具栏图标点一下：隐了就召唤、显着就收起
       toggle: () => { panel.style.display = panel.style.display === 'none' ? '' : 'none'; },
     };
