@@ -140,7 +140,43 @@
       return book;
     }
 
+    // 实时价：CLOB WebSocket market 频道，订单簿一变即推送。订阅集 =「勾选 bin × 当前方向」的 token，
+    // 该频道只在连接时订阅一次，集合变了就重连（连接很轻，勾选是低频动作）。
+    const WSS = 'wss://ws-subscriptions-clob.polymarket.com/ws/market';
+    let ws = null, wsAssets = '', wsPing = null, wsDebounce = null;
+    function syncWS() {
+      const assets = [...state.checked].map(i => tokenFor(state.bins[i])).filter(Boolean).sort();
+      const key = assets.join(',');
+      if (key === wsAssets) return;
+      wsAssets = key;
+      clearInterval(wsPing);
+      if (ws) { ws.onclose = null; ws.close(); ws = null; }
+      if (!assets.length) return;
+      const sock = ws = new WebSocket(WSS);
+      sock.onopen = () => {
+        sock.send(JSON.stringify({ type: 'market', assets_ids: assets }));
+        wsPing = setInterval(() => { if (sock.readyState === 1) sock.send('PING'); }, 10000); // 不 PING 会被服务端断开
+      };
+      sock.onmessage = (e) => {
+        let evs; try { evs = JSON.parse(e.data); } catch { return; } // PONG 等非 JSON 心跳
+        let dirty = false;
+        for (const ev of [].concat(evs)) {
+          if (!ev || !ev.asset_id) continue;
+          // book 快照直接入缓存（与 REST /book 同为 asks:[{price,size}]）；其余事件（price_change 等）标脏待 REST 重取
+          if (ev.event_type === 'book' && ev.asks) bookCache[ev.asset_id] = { book: ev, ts: Date.now() };
+          else delete bookCache[ev.asset_id];
+          dirty = true;
+        }
+        if (!dirty) return;
+        clearTimeout(wsDebounce);
+        wsDebounce = setTimeout(() => { if (!_running) recompute(); }, 250); // 合并连发推送，一次重算
+      };
+      // 掉线：清状态，10s 兜底轮询里的 recompute → syncWS 会自动重连
+      sock.onclose = () => { if (ws === sock) { ws = null; wsAssets = ''; clearInterval(wsPing); } };
+    }
+
     async function recompute(fresh) {
+      syncWS(); // 勾选/方向一变，这里是唯一汇聚点：顺带对齐 WS 订阅集
       const gen = ++_gen;
       const avgPrices = [];
       let ok = true, totalShares = 0;
@@ -429,13 +465,19 @@
       panel.querySelector('#pb-close').onclick = clearOverlay;
     }
 
-    // 勾选后价格跟随订单簿实时刷新：每 10 秒强制拉新 book 重算，不用刷新整页。
-    // 下单流程中（_running）暂停轮询，避免与 submitLeg 的取书/填价互抢。
-    const liveRefresh = setInterval(() => { if (state.checked.size && !_running) recompute(true); }, 10000);
+    // 兜底轮询：仅 WS 未连上（初连失败/掉线）时每 10 秒强拉一次，recompute 内的 syncWS 顺带重连。
+    // 下单流程中（_running）不刷，避免与 submitLeg 的取书/填价互抢。
+    const liveRefresh = setInterval(() => {
+      if (state.checked.size && !_running && !(ws && ws.readyState === 1)) recompute(true);
+    }, 10000);
 
     return {
       slug,
-      destroy: () => { clearInterval(liveRefresh); panel.remove(); },
+      destroy: () => {
+        clearInterval(liveRefresh); clearInterval(wsPing); clearTimeout(wsDebounce);
+        if (ws) { ws.onclose = null; ws.close(); }
+        panel.remove();
+      },
       // 工具栏图标点一下：隐了就召唤、显着就收起
       toggle: () => { panel.style.display = panel.style.display === 'none' ? '' : 'none'; },
     };
