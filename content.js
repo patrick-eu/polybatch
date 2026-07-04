@@ -131,16 +131,16 @@
 
     function tokenFor(bin) { return state.dir === 'YES' ? bin.yesToken : bin.noToken; }
 
-    async function bookFor(bin) {
+    async function bookFor(bin, fresh) {
       const tok = tokenFor(bin);
       const c = bookCache[tok];
-      if (c && (Date.now() - c.ts) < 30000) return c.book;
+      if (!fresh && c && (Date.now() - c.ts) < 30000) return c.book;
       const book = await fetchBook(tok);
       bookCache[tok] = { book, ts: Date.now() };
       return book;
     }
 
-    async function recompute() {
+    async function recompute(fresh) {
       const gen = ++_gen;
       const avgPrices = [];
       let ok = true, totalShares = 0;
@@ -149,7 +149,7 @@
         if (!cell) continue;
         if (!state.checked.has(i)) { cell.textContent = '·'; cell.className = 'pb-leg-cost'; continue; }
         let book;
-        try { book = await bookFor(state.bins[i]); }
+        try { book = await bookFor(state.bins[i], fresh); }
         catch { if (gen !== _gen) return; cell.textContent = t('loadFail'); cell.className = 'pb-leg-cost warn'; ok = false; continue; }
         if (gen !== _gen) return;
         const r = calcLegCost(book, state.shares);
@@ -272,7 +272,8 @@
       await sleep(500); // 等右侧组件加载该 bin
 
       // 2. 限价（美分）→ Limit price：挂到「吃完所填股数深度的最高卖档」，否则超一档深度时剩余不成交
-      const book = await bookFor(leg.bin);
+      //    强制拉最新订单簿：勾选到确认下单之间价格可能已变，用缓存价挂限价会挂偏
+      const book = await bookFor(leg.bin, true);
       const cents = worstFillCents(book, leg.shares);
       if (cents == null) throw new Error('ask');
       const priceInput = await waitEl(PB_SELECTORS.limitPriceInput);
@@ -428,9 +429,13 @@
       panel.querySelector('#pb-close').onclick = clearOverlay;
     }
 
+    // 勾选后价格跟随订单簿实时刷新：每 10 秒强制拉新 book 重算，不用刷新整页。
+    // 下单流程中（_running）暂停轮询，避免与 submitLeg 的取书/填价互抢。
+    const liveRefresh = setInterval(() => { if (state.checked.size && !_running) recompute(true); }, 10000);
+
     return {
       slug,
-      destroy: () => panel.remove(),
+      destroy: () => { clearInterval(liveRefresh); panel.remove(); },
       // 工具栏图标点一下：隐了就召唤、显着就收起
       toggle: () => { panel.style.display = panel.style.display === 'none' ? '' : 'none'; },
     };
